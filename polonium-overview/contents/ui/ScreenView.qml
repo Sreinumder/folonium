@@ -30,6 +30,11 @@ FocusScope {
     readonly property int chipRowH: 28
     readonly property string activity: KWinComponents.Workspace.currentActivity
 
+    // Dragging reveals the empty-desktop chips; the grid slides down so the
+    // chips sit in clear space instead of on top of the first desktops.
+    readonly property bool chipsShown: dragActive
+    onChipsShownChanged: rebuildGroups()
+
     // Occupied desktops become groups packed to the largest common scale;
     // empty ones only get a numbered chip at the top.
     property var groups: []
@@ -56,6 +61,15 @@ FocusScope {
     // Mouse position for hover desktop switching
     property real mouseX: 0
     property real mouseY: 0
+    // The desktop that was active when the overview opened; quitting without
+    // a direct choice returns there.
+    property QtObject originDesktop: null
+    property bool desktopPicked: false
+    // Hover switches once per desktop entry, so it must not keep re-issuing
+    // the switch while the pointer rests on the same desktop.
+    property int hoveredDesktopNumber: 0
+    // After a successful drag: retile the origin first, then land on the target.
+    property QtObject dropTargetDesktop: null
 
     // Right click opens this window menu; it lives in the effect so the
     // overview can keep showing the change it makes.
@@ -79,12 +93,8 @@ FocusScope {
     property bool ready: false
     property real openProgress: ready && effect.activated ? 1 : 0
     Component.onCompleted: Qt.callLater(() => {
-        console.warn("OVMARK loaded");
-        console.warn("GROUPS", root.groups.filter(x => x.occupied).map(x => [x.index, x.x, x.y, x.w, x.h, x.desktop && x.desktop.x11DesktopNumber].join(",")).join(" | "));
         root.ready = true;
         root.rebuildGroups();
-        // Rapidly cycle through all desktops to ensure they're tiled, then return.
-        root.primeAllDesktops();
     })
 
     // MPRIS lives behind the polonium saver service: QML's DBusCall cannot
@@ -121,6 +131,17 @@ FocusScope {
     function requestSwap(a, b) {
         requestCall.arguments = [JSON.stringify({ t: "swap", a: String(a.internalId), b: String(b.internalId) })];
         requestCall.call();
+    }
+
+    // Only KWin's own D-Bus method moves the real desktop; writing
+    // Workspace.currentDesktop from an effect is ignored.
+    KWinComponents.DBusCall {
+        id: setDesktopCall
+        service: "org.kde.KWin"
+        path: "/KWin"
+        dbusInterface: "org.kde.KWin"
+        method: "setCurrentDesktop"
+        onFailed: () => {}
     }
 
     // Window menu. Above/below/hide apply immediately; the rule editors are
@@ -180,20 +201,15 @@ FocusScope {
         repeat: true
         running: true
         onTriggered: {
-            if (!effect.activated || root.dragActive) return;
-            const mousePos = Qt.point(root.mouseX, root.mouseY);
-            const g = root.groupAt(mousePos);
-            if (g && g.desktop !== root.currentDesktop) {
-                root.switchTo(g.desktop);
+            if (!effect.activated || root.dragActive || root.dropTargetDesktop !== null) return;
+            const d = root.desktopAt(Qt.point(root.mouseX, root.mouseY));
+            const n = d !== null ? d.x11DesktopNumber : 0;
+            // One switch per hover; leaving all desktops re-arms it.
+            if (n === root.hoveredDesktopNumber) return;
+            root.hoveredDesktopNumber = n;
+            if (d !== null) {
+                root.switchTo(d);
             }
-        }
-    }
-    Timer {
-        id: desktopSwitchTimer
-        interval: 30
-        repeat: false
-        onTriggered: {
-            root.primeAllDesktops();
         }
     }
     Timer {
@@ -212,8 +228,26 @@ FocusScope {
         target: effect
         function onActivatedChanged() {
             if (effect.activated) {
+                root.originDesktop = KWinComponents.Workspace.currentDesktop;
+                root.desktopPicked = false;
+                root.hoveredDesktopNumber = 0;
+                // The pointer may already rest on a desktop; start from where
+                // it really is instead of waiting for the first move.
+                root.mouseX = KWinComponents.Workspace.cursorPos.x;
+                root.mouseY = KWinComponents.Workspace.cursorPos.y;
+                root.dropTargetDesktop = null;
                 statesCall.call();
                 root.rebuildGroups();
+            } else {
+                afterDropTimer.stop();
+                root.dropTargetDesktop = null;
+                // Quitting without choosing returns to the desktop the
+                // overview was opened on, so hovering does not move the user.
+                if (!root.desktopPicked && root.originDesktop !== null) {
+                    root.switchTo(root.originDesktop);
+                }
+                root.originDesktop = null;
+                root.desktopPicked = false;
             }
         }
     }
@@ -280,8 +314,9 @@ FocusScope {
     function packGroups(occupied) {
         const availW = root.screenW - 2 * root.outerPad;
         // Empty-desktop chips float above the grid instead of reserving a band
-        // at the top, so the desktops get the whole height.
-        const availH = root.screenH - 2 * root.outerPad - root.mediaSpace;
+        // at the top; while dragging they get the band so they stay reachable.
+        const topInset = root.chipsShown ? root.chipRowH : 0;
+        const availH = root.screenH - 2 * root.outerPad - topInset - root.mediaSpace;
         // Desktop order, so desktop 1 is the first group at the top.
         const ordered = occupied.slice();
         let lo = 0.001;
@@ -334,7 +369,8 @@ FocusScope {
         const packed = root.packGroups(occupied);
         const rects = {};
         if (packed !== null && packed.s > 0) {
-            let y = root.outerPad + Math.max(0, (root.screenH - 2 * root.outerPad - root.mediaSpace - packed.h) / 2);
+            const topInset = root.chipsShown ? root.chipRowH : 0;
+            let y = root.outerPad + topInset + Math.max(0, (root.screenH - 2 * root.outerPad - topInset - root.mediaSpace - packed.h) / 2);
             for (const row of packed.rows) {
                 let x = (root.screenW - row.w) / 2;
                 for (const item of row.items) {
@@ -390,19 +426,25 @@ FocusScope {
         return null;
     }
     function chipAt(p) {
-        // Empty desktops are chips at the top; use emptyDesktops array
-        for (let i = 0; i < root.emptyDesktops.length; i++) {
-            const c = root.emptyDesktops[i];
-            // Chips are centered horizontally at the top
-            const chipX = (root.screenW - root.emptyDesktops.length * 28 - (root.emptyDesktops.length - 1) * root.groupGap) / 2 + i * (28 + root.groupGap);
-            const chipY = root.outerPad;
-            const chipW = 28;
-            const chipH = root.chipRowH;
-            if (p.x >= chipX && p.x < chipX + chipW && p.y >= chipY && p.y < chipY + chipH) {
-                return c;
+        // Empty desktops are only shown while dragging; use their real items
+        // so the hit area matches what is drawn.
+        for (let i = 0; i < chipRepeater.count; i++) {
+            const item = chipRepeater.itemAt(i);
+            if (item && root.pointInItem(item, p)) {
+                return item.modelData;
             }
         }
         return null;
+    }
+    // The desktop under a point, occupied group or empty chip. Chips win:
+    // they are drawn above the grid.
+    function desktopAt(p) {
+        const c = root.chipAt(p);
+        if (c !== null) {
+            return c.desktop;
+        }
+        const g = root.groupAt(p);
+        return g !== null ? g.desktop : null;
     }
     function clearDropHover() {
         for (let i = 0; i < tiles.count; i++) {
@@ -428,8 +470,8 @@ FocusScope {
         if (root.dragTile === null) {
             return;
         }
-        const g = root.groupAt(root.dragPointer);
-        const c = g === null ? root.chipAt(root.dragPointer) : null;
+        const c = root.chipAt(root.dragPointer);
+        const g = c === null ? root.groupAt(root.dragPointer) : null;
         root.dragGroup = g;
         root.dragChip = c;
         for (let i = 0; i < tiles.count; i++) {
@@ -515,10 +557,10 @@ FocusScope {
             return;
         }
         const w = tile.window;
-        console.warn("FINISHDRAG", tile.dragButton, w.tile !== null, "dragGroup:", root.dragGroup !== null, "dragChip:", root.dragChip !== null);
         const g = root.dragGroup;
         const c = root.dragChip;
         const target = g !== null ? g.desktop : (c !== null ? c.desktop : null);
+        const source = w.desktops.length > 0 ? w.desktops[0] : null;
         const dx = root.dragPointer.x - tile.pressPointer.x;
         const dy = root.dragPointer.y - tile.pressPointer.y;
         const floating = w.tile === null;
@@ -539,7 +581,6 @@ FocusScope {
         function sameDesktop(d1, d2) {
             return d1 && d2 && d1.x11DesktopNumber === d2.x11DesktopNumber;
         }
-        console.warn("FINISHDRAG same desktop?", g !== null, sameDesktop(g.desktop, tile.tile.desktop), "g.desktop:", g && g.desktop && g.desktop.x11DesktopNumber, "tile.desktop:", tile.tile.desktop && tile.tile.desktop.x11DesktopNumber);
         if (g !== null && sameDesktop(g.desktop, tile.tile.desktop)) {
             if (floating) {
                 // Floating window on same desktop: just move it
@@ -547,14 +588,10 @@ FocusScope {
                 root.clearDrag();
             } else if (tile.dragButton === Qt.LeftButton && !tile.tile.monoLayout) {
                 // Tiled window: swap with window under cursor
-                console.warn("FINISHDRAG attempting swap");
                 const groupTile = root.tileForGroup(g);
-                console.warn("FINISHDRAG groupTile:", groupTile !== null);
                 const under = groupTile === null ? null
                     : groupTile.windowAt(root.dragPointer.x - g.x, root.dragPointer.y - g.y, tile);
-                console.warn("FINISHDRAG under:", under !== null, under && under !== tile);
                 if (under !== null && under !== tile) {
-                    console.warn("FINISHDRAG calling requestSwap");
                     root.requestSwap(w, under.window);
                 }
                 // Swap is instant; just clear drag (ghost vanishes)
@@ -565,19 +602,18 @@ FocusScope {
             }
             return;
         }
-        console.warn("FINISHDRAG different desktop, target:", target);
         // Different desktop / empty chip
         if (tile.dragButton === Qt.RightButton) {
             // Right drag clones: window appears on extra desktop
             root.cloneToDesktop(w, target);
             root.clearDrag();
-            root.refreshAfterDrag();
+            root.switchAfterDrop(source, target);
         } else {
             // Left drag moves window to new desktop
             Qt.callLater(() => {
                 w.desktops = [target];
                 root.clearDrag();
-                root.refreshAfterDrag();
+                root.switchAfterDrop(source, target);
             });
         }
     }
@@ -585,7 +621,6 @@ FocusScope {
     function refreshAfterDrag() {
         statesCall.call();
         root.rebuildGroups();
-        root.primeAllDesktops();
     }
 
     Timer {
@@ -721,30 +756,52 @@ FocusScope {
         return Qt.rgba(c.r, c.g, c.b, a);
     }
 
+    // SceneView only changes the desktop the effect draws; the D-Bus call
+    // moves the real desktop so polonium retiles it in the background.
+    function previewTo(desktop) {
+        KWinComponents.SceneView.currentDesktop = desktop;
+    }
+
     function switchTo(desktop) {
-        root.KWinComponents.SceneView.currentDesktop = desktop;
-    }
-
-    function primeAllDesktops() {
-        const original = root.currentDesktop;
-        const list = root.desktops;
-        if (list.length < 2) return;
-        let i = 0;
-        function next() {
-            if (i >= list.length) {
-                root.switchTo(original);
-                return;
-            }
-            root.switchTo(list[i]);
-            i++;
-            // Use a short timer to let KWin process the desktop change and emit signals
-            desktopSwitchTimer.interval = 30;
-            desktopSwitchTimer.running = true;
+        if (desktop === null || desktop === undefined) {
+            return;
         }
-        Qt.callLater(next);
+        setDesktopCall.arguments = [desktop.x11DesktopNumber];
+        setDesktopCall.call();
+        root.previewTo(desktop);
     }
 
-    function activateWindow(window) {
+    // A move retiles both desktops; briefly return to the source so the old
+    // layout drops the window, then land on the desktop it was dragged to.
+    function switchAfterDrop(from, to) {
+        root.desktopPicked = true;
+        root.hoveredDesktopNumber = to !== null ? to.x11DesktopNumber : 0;
+        root.switchTo(from);
+        root.dropTargetDesktop = to;
+        afterDropTimer.restart();
+    }
+
+    Timer {
+        id: afterDropTimer
+        interval: 200
+        onTriggered: {
+            const target = root.dropTargetDesktop;
+            root.dropTargetDesktop = null;
+            if (target !== null) {
+                root.switchTo(target);
+            }
+            root.refreshAfterDrag();
+        }
+    }
+
+    function activateWindow(window, desktop) {
+        if (desktop === undefined && window.desktops && window.desktops.length === 1) {
+            desktop = window.desktops[0];
+        }
+        root.desktopPicked = true;
+        if (desktop !== undefined) {
+            root.switchTo(desktop);
+        }
         if (window.minimized) {
             window.minimized = false;
         }
@@ -757,6 +814,7 @@ FocusScope {
         if (n < 2) {
             return;
         }
+        root.desktopPicked = true;
         const i = desktops.indexOf(currentDesktop);
         switchTo(desktops[((i + delta) % n + n) % n]);
     }
@@ -794,20 +852,8 @@ FocusScope {
             }
         }
         if (target >= 0 && target < desktops.length) {
+            root.desktopPicked = true;
             switchTo(desktops[target]);
-            event.accepted = true;
-        }
-        // Debug: press 'D' to test groupAt at current mouse position
-        if (event.key === Qt.Key_D) {
-            const pos = Qt.point(root.mouseX, root.mouseY);
-            const g = root.groupAt(pos);
-            const tileCount = root.tiles.count;
-            // Switch to desktop based on tile count to verify tiles exist
-            if (tileCount > 0) {
-                root.switchTo(root.desktops[1]); // Desktop 2 if tiles exist
-            } else {
-                root.switchTo(root.desktops[0]); // Desktop 1 if no tiles
-            }
             event.accepted = true;
         }
     }
@@ -1133,7 +1179,6 @@ FocusScope {
             acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
             propagateComposedEvents: false
             onPressed: (mouse) => {
-                console.warn("PRESS", mouse.button);
                 win.dragButton = mouse.button;
                 win.dragged = false;
                 const p = win.mapToItem(root, mouse.x, mouse.y);
@@ -1142,16 +1187,19 @@ FocusScope {
                 win.pressGrab = Qt.point(p.x - o.x, p.y - o.y);
             }
             onPositionChanged: (mouse) => {
+                const p = win.mapToItem(root, mouse.x, mouse.y);
+                // Hover switching uses the pointer position even when the
+                // cursor is over a window thumbnail rather than a tile gap.
+                root.mouseX = p.x;
+                root.mouseY = p.y;
                 // Middle click closes, so it never drags.
                 if (!(mouse.buttons & (Qt.LeftButton | Qt.RightButton))) {
                     return;
                 }
-                const p = win.mapToItem(root, mouse.x, mouse.y);
                 if (!root.dragActive && !win.dragged) {
                     if (Math.abs(p.x - win.pressPointer.x) < 5 && Math.abs(p.y - win.pressPointer.y) < 5) {
                         return;
                     }
-                    console.warn("BEGINDRAG");
                     win.dragged = true;
                     root.beginDrag(win, p, win.pressGrab);
                     return;
@@ -1173,7 +1221,7 @@ FocusScope {
                     return;
                 }
                 if (mouse.button === Qt.LeftButton) {
-                    root.activateWindow(win.window);
+                    root.activateWindow(win.window, win.tile.desktop);
                 } else if (mouse.button === Qt.MiddleButton) {
                     win.window.closeWindow();
                 } else if (mouse.button === Qt.RightButton) {
@@ -1324,14 +1372,16 @@ FocusScope {
             acceptedButtons: Qt.LeftButton
             enabled: desktopTile.screen === root.targetScreen && !root.dragActive
             onClicked: {
+                root.desktopPicked = true;
                 root.switchTo(desktopTile.desktop);
                 effect.deactivate();
             }
-            // onEntered doesn't fire when item appears under mouse, so use containsMouse binding
-            onContainsMouseChanged: {
-                if (containsMouse && !root.dragActive) {
-                    root.switchTo(desktopTile.desktop);
-                }
+            // The hover timer reads this; gap moves inside a tile do not reach
+            // the window tiles above it.
+            onPositionChanged: (mouse) => {
+                const p = desktopHover.mapToItem(root, mouse.x, mouse.y);
+                root.mouseX = p.x;
+                root.mouseY = p.y;
             }
         }
 
@@ -1514,10 +1564,18 @@ FocusScope {
 
                     MouseArea {
                         anchors.fill: parent
+                        hoverEnabled: true
                         acceptedButtons: Qt.LeftButton
                         onClicked: {
+                            root.desktopPicked = true;
                             root.switchTo(chip.desktop);
                             effect.deactivate();
+                        }
+                        // Lets the hover timer reach empty desktops too.
+                        onPositionChanged: (mouse) => {
+                            const p = mapToItem(root, mouse.x, mouse.y);
+                            root.mouseX = p.x;
+                            root.mouseY = p.y;
                         }
                     }
                 }
