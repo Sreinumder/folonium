@@ -41,10 +41,6 @@ class CustomEngineSettings extends BaseEngineSettings {
     verticalRatioIndex: number = 0;
     windowOrderOffset: number = 0;
 
-    constructor() {
-        super();
-    }
-
     getProps(): object {
         return {
             layoutsJson: this.layoutsJson,
@@ -66,9 +62,10 @@ class CustomEngineSettings extends BaseEngineSettings {
 
     parseLayouts(): void {
         this.layouts = [];
-        if (!this.layoutsJson.trim()) return;
-        // Split by whitespace, ignore empty
-        const tokens = this.layoutsJson.trim().split(/\s+/);
+        if (!this.layoutsJson || !this.layoutsJson.trim()) return;
+        // Handle escaped newlines and other special chars from kwinrc
+        let json = this.layoutsJson.replace(/\n/g, ' ').replace(/\t/g, ' ').replace(/\r/g, ' ');
+        const tokens = json.trim().split(/\s+/).filter(t => t.length > 0);
         for (const token of tokens) {
             const t = token.trim();
             if (!t) continue;
@@ -92,8 +89,9 @@ class CustomEngineSettings extends BaseEngineSettings {
 
     parseRatios(): void {
         this.ratios = [];
-        if (!this.ratiosJson.trim()) return;
-        const tokens = this.ratiosJson.trim().split(/\s+/);
+        if (!this.ratiosJson || !this.ratiosJson.trim()) return;
+        let json = this.ratiosJson.replace(/\n/g, ' ').replace(/\t/g, ' ').replace(/\r/g, ' ');
+        const tokens = json.trim().split(/\s+/).filter(t => t.length > 0);
         for (const token of tokens) {
             const t = token.trim();
             if (!t) continue;
@@ -115,16 +113,14 @@ class CustomEngineSettings extends BaseEngineSettings {
 
     getCurrentLayout(windowCount: number): CustomLayout | null {
         const candidates = this.getLayoutsForCount(windowCount);
-        console().warn("CustomEngine.getCurrentLayout: windowCount:", windowCount, "candidates:", candidates.length, "layoutIndex:", this.layoutIndex);
+        console().warn("CustomEngine.getCurrentLayout: windowCount:", windowCount, "candidates:", candidates.length, "layoutIndex:", this.layoutIndex, "layouts:", this.layouts.map(l=>l.cols+":"+l.rotated));
         if (candidates.length === 0) {
             // Fallback: next larger layout
             const larger = this.layouts.find(l => l.windowCount > windowCount);
             return larger || null;
         }
         const idx = this.layoutIndex % candidates.length;
-        const layout = candidates[idx];
-        console().debug("CustomEngine.getCurrentLayout: selected:", layout);
-        return layout;
+        return candidates[idx];
     }
 
     getCurrentHorizontalRatio(cols: number): CustomRatio | null {
@@ -156,7 +152,6 @@ export class CustomEngine implements TilingEngineInterface {
 
     buildLayout(): Tile {
         // Build the tile tree based on current window list
-        console().warn("CustomEngine.buildLayout: windows:", this.windows.length, "layoutIndex:", this.settings.layoutIndex, "layoutsJson:", this.settings.layoutsJson);
         return this.buildLayoutForWindows(this.windows);
     }
 
@@ -217,7 +212,7 @@ export class CustomEngine implements TilingEngineInterface {
                 for (let ri = 0; ri < colWindows; ri++) {
                     if (winIdx >= windows.length) break;
                     const rowTile = new Tile();
-                    rowTile.layoutDirection = LayoutDirection.Horizontal; // single window
+                    rowTile.layoutDirection = LayoutDirection.Horizontal;
                     rowTile.size = rowHeights[ri];
                     rowTile.windows = [windows[winIdx]];
                     winIdx++;
@@ -295,7 +290,6 @@ export class CustomEngine implements TilingEngineInterface {
     }
 
     addWindow(window: Window, tile?: Tile, direction?: Direction): void {
-        // Default: append to end
         if (!this.windows.includes(window)) {
             this.windows.push(window);
         }
@@ -309,8 +303,6 @@ export class CustomEngine implements TilingEngineInterface {
     }
 
     placeWindow(window: Window, tile: Tile, direction?: Direction): void {
-        // Find the tile in the current layout to determine insertion index
-        // For simplicity, append to end if tile not found
         if (!this.windows.includes(window)) {
             this.windows.push(window);
         }
@@ -322,7 +314,6 @@ export class CustomEngine implements TilingEngineInterface {
 
     updateTiles(rootTile: Tile): void {
         // Sync sizes from the KWin-synced rootTile back to settings
-        // rootTile is the engine root tile after KWin size sync
         this.readBackRatios(rootTile);
     }
 
@@ -332,10 +323,8 @@ export class CustomEngine implements TilingEngineInterface {
         // Read horizontal ratios (top-level children sizes)
         const hParts = rootTile.children.map(c => c.size);
         if (hParts.length > 0) {
-            // Find matching ratio and update index
             const candidates = this.settings.getRatiosForArity(hParts.length);
             if (candidates.length > 0) {
-                // Find closest match
                 let bestIdx = 0;
                 let bestDiff = Infinity;
                 for (let i = 0; i < candidates.length; i++) {
@@ -374,21 +363,18 @@ export class CustomEngine implements TilingEngineInterface {
 
     // Shortcut actions
     rotateLayout(): void {
-        // Toggle between normal and rotated for current layout
         const count = this.windows.length;
         const candidates = this.settings.getLayoutsForCount(count);
         if (candidates.length === 0) return;
         const current = this.settings.getCurrentLayout(count);
         if (!current) return;
 
-        // Find a layout with same cols but opposite rotation
         const opposite = candidates.find(l => 
             l.cols.length === current.cols.length && 
             l.cols.every((v, i) => v === current.cols[i]) && 
             l.rotated !== current.rotated
         );
         if (opposite) {
-            // Set layoutIndex to select this layout
             const allIndex = this.settings.layouts.indexOf(opposite);
             if (allIndex !== -1) {
                 this.settings.layoutIndex = allIndex;
@@ -397,20 +383,17 @@ export class CustomEngine implements TilingEngineInterface {
     }
 
     mirrorLayout(): void {
-        // Reverse the column/row order of the current layout
         const count = this.windows.length;
         const current = this.settings.getCurrentLayout(count);
         if (!current) return;
 
-        // Create mirrored version
-        const mirroredCols = current.cols.slice().reverse();
+        const mirroredCols = [...current.cols].reverse();
         const mirrored: CustomLayout = {
             cols: mirroredCols,
             rotated: current.rotated,
             windowCount: current.windowCount,
         };
         
-        // Find or add to layouts
         let foundIdx = this.settings.layouts.findIndex(l => 
             l.cols.length === mirrored.cols.length &&
             l.cols.every((v, i) => v === mirrored.cols[i]) &&
@@ -428,7 +411,7 @@ export class CustomEngine implements TilingEngineInterface {
         const count = this.windows.length;
         const current = this.settings.getCurrentLayout(count);
         if (!current) return;
-        const arity = current.rotated ? current.cols.length : current.cols.length;
+        const arity = current.cols.length;
         const candidates = this.settings.getRatiosForArity(arity);
         if (candidates.length <= 1) return;
         this.settings.horizontalRatioIndex = (this.settings.horizontalRatioIndex + 1) % candidates.length;
@@ -438,9 +421,7 @@ export class CustomEngine implements TilingEngineInterface {
         const count = this.windows.length;
         const current = this.settings.getCurrentLayout(count);
         if (!current) return;
-        // For each column/row, find the vertical ratio arity
-        // Use the first sub-layout's window count
-        const subCount = current.rotated ? current.cols[0] : current.cols[0];
+        const subCount = current.cols[0];
         const candidates = this.settings.getRatiosForArity(subCount);
         if (candidates.length <= 1) return;
         this.settings.verticalRatioIndex = (this.settings.verticalRatioIndex + 1) % candidates.length;
@@ -456,7 +437,5 @@ export class CustomEngine implements TilingEngineInterface {
     cycleWindowOrder(): void {
         if (this.windows.length === 0) return;
         this.settings.windowOrderOffset = (this.settings.windowOrderOffset + 1) % this.windows.length;
-        // Rebuild layout with new order
-        // The driver will call buildLayout again after settings change
     }
 }

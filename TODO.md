@@ -3,7 +3,8 @@
 ## In progress
 
 - [ ] Fix window drag in the overview effect (left drag = swap/move, right drag = clone, snap back on invalid drop)
-- [ ] Implement the custom tiling engine (see spec below)
+- [ ] Fix custom tiling engine runtime error ("Missing call to super()")
+- [ ] Complete custom tiling engine implementation
 
 ## Overview drag — test checklist (manual)
 
@@ -34,22 +35,27 @@ Config (text fields, per display via the saver):
   arity 3. Ratios are matched to the number of columns (horizontal) or the
   number of windows in a stack (vertical). Separator lines are just formatting.
 
-Behaviour:
+Behaviour (IMPLEMENTED in CustomEngine):
 
-- [ ] `[1 2 1]` builds 3 columns: one window, a 2-window stack, one window.
-- [ ] `/1 2 1/` builds 3 rows: one window, 2 side by side, one window.
-- [ ] Layouts are grouped by window count; a count with no exact layout uses
-  the next larger one (empty slots are allowed).
-- [ ] Horizontal ratio sets column widths, vertical ratio sets row heights.
+- [x] `[1 2 1]` builds 3 columns: one window, a 2-window stack, one window.
+- [x] `/1 2 1/` builds 3 rows: one window, 2 side by side, one window.
+- [x] Layouts grouped by window count; fallback to next larger layout.
+- [x] Horizontal ratio sets column widths, vertical ratio sets row heights.
 
-Shortcuts:
+Shortcuts (IMPLEMENTED):
 
-- [ ] Rotate layout (toggle `[a b]` <-> `/a b/`, reuses the existing shortcut)
-- [ ] Mirror layout (reverse column/row order)
-- [ ] Cycle horizontal ratio
-- [ ] Cycle vertical ratio
-- [ ] Cycle layout for the current window count
-- [ ] Cycle/rotate the order in which windows fill slots
+- [x] Rotate layout (toggle `[a b]` <-> `/a b/`)
+- [x] Mirror layout (reverse column/row order)
+- [x] Cycle horizontal ratio
+- [x] Cycle vertical ratio
+- [x] Cycle layout for the current window count
+- [x] Cycle/rotate the order in which windows fill slots
+
+Remaining work:
+
+- [ ] Fix runtime error "Missing call to super()" preventing engine use
+- [ ] Test all shortcuts and config persistence
+- [ ] Verify layout/ratio parsing edge cases
 
 ## Known limitations
 

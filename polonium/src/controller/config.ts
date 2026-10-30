@@ -126,11 +126,6 @@ export class Config {
         };
         const layoutsJson = rc("CustomLayouts", "");
         const ratiosJson = rc("CustomRatios", "");
-        console().warn("CustomSettings from kwinrc:", {layoutsJson, ratiosJson,
-            layoutIndex: rc("CustomLayoutIndex", 0),
-            horizontalRatioIndex: rc("CustomHorizontalRatioIndex", 0),
-            verticalRatioIndex: rc("CustomVerticalRatioIndex", 0),
-            windowOrderOffset: rc("CustomWindowOrderOffset", 0)});
         this.customSettings = {
             layoutsJson,
             ratiosJson,

@@ -11,11 +11,22 @@ if (!inputFile) {
 
 let code = fs.readFileSync(inputFile, 'utf8');
 
-// 1. Replace spread in array literals: [...expr] -> expr.slice()
+// 1. Replace spread in array literals: [...expr] -> Array.from(expr) or expr.slice()
 // Handle: [...expr], [... expr], [...expr, ...expr2], [a, ...expr, b], etc.
+// For function calls/iterables, use Array.from(). For arrays, use .slice().
 code = code.replace(/\[\s*([^\]]*?\.\.\.[^\]]*?)\s*\]/g, (match, inner) => {
-    // Replace each ...expr with expr.slice()
-    return '[' + inner.replace(/\.\.\.\s*([a-zA-Z_$][\w$.]*)/g, '$1.slice()') + ']';
+    // Replace each ...expr with appropriate array conversion
+    // If expr looks like a function call (contains parentheses), use Array.from()
+    // Otherwise use .slice()
+    return '[' + inner.replace(/\.\.\.\s*([^\s,]+(?:\s*\([^)]*\))?)/g, (m, expr) => {
+        expr = expr.trim();
+        // Check if it's a function call or property access with call
+        if (expr.includes('(') || expr.includes('.') && expr.includes('(')) {
+            return `Array.from(${expr})`;
+        } else {
+            return `${expr}.slice()`;
+        }
+    }) + ']';
 });
 
 // 2. Replace spread in function CALLS (not declarations): fn(a, ...args) -> fn.apply(this, [a].concat(args))
