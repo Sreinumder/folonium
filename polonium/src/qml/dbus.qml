@@ -52,6 +52,20 @@ Item {
         method: "SetGlobalSetting";
     }
 
+    // Volatile per-display state (layout text and monocle flag) for the
+    // overview effect.
+    function setState() {
+        return setStateObj;
+    }
+    DBusCall {
+        id: setStateObj;
+
+        service: "xyz.vaughanm.polonium";
+        path: "/saver";
+        dbusInterface: "xyz.vaughanm.polonium";
+        method: "SetState";
+    }
+
     // One pending command from the overview effect, polled by the script.
     function takeRequest() {
         return takeRequestObj;

@@ -76,6 +76,16 @@ Item {
         text: "Polonium: Toggle KWin Engine";
         sequence: "";
     }
+    function toggleMonocle() {
+        return toggleMonocleObj;
+    }
+    ShortcutHandler {
+        id: toggleMonocleObj;
+
+        name: "PoloniumToggleMonocle";
+        text: "Polonium: Toggle Monocle Layout";
+        sequence: "";
+    }
     function toggleActiveTiling() {
         return toggleActiveTilingObj;
     }

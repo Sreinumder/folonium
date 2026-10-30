@@ -830,6 +830,8 @@ var CustomEngineSettings = class extends BaseEngineSettings {
     super(...arguments);
     this.rotateLayout = false;
     this.mirrorLayout = false;
+    // Every window shares one tile, so they stack instead of splitting.
+    this.monocle = false;
     // L1 is the default. The selected tab is authoritative: a tab with no
     // matching layout leaves windows floating instead of using generated shapes.
     this.customLayoutTab = 0;
@@ -1210,6 +1212,19 @@ var CustomEngine = class {
     const rootTile = new Tile();
     this.tileMap.clear();
     this.windowTiles.clear();
+    if (this.settings.monocle) {
+      // One tile holds every window, so KWin stacks them full size and the
+      // layout machinery stays out of the way.
+      this.currentAst = null;
+      this.currentKey = null;
+      this.builtKey = null;
+      this.currentCount = this.windows.length;
+      for (const window of this.windows) {
+        rootTile.windows.push(window);
+        this.windowTiles.set(window, rootTile);
+      }
+      return rootTile;
+    }
     const count = this.windows.length;
     if (count === 0) {
       this.currentAst = null;
@@ -1351,6 +1366,9 @@ var CustomEngine = class {
   }
   // The shape on screen, written in the DSL.
   shapeText() {
+    if (this.settings.monocle) {
+      return "";
+    }
     const count = this.windows.length;
     if (count === 0) {
       return "";
@@ -1596,6 +1614,11 @@ var Config = class {
     this.tilePopups = rc("TilePopups", false);
     this.windowDragPolicy = rc("WindowDragPolicy", 1 /* Tiled */);
     this.dragRetilePoint = rc("DragRetilePoint", 0 /* Mouse */);
+    // 0 keeps KWin's natural drag size, 1 keeps the tiled size, 2 shrinks it.
+    this.dragWindowSize = rc("DragWindowSize", 0);
+    this.dragWindowSizePercent = rc("DragWindowSizePercent", 50);
+    // 0 leaves placement to KWin; 1..9 are the cells of a 3x3 output grid.
+    this.floatingSpawnPoint = rc("FloatingSpawnPoint", 0);
     this.mouseFollowsFocus = rc("MouseFollowsFocus", false);
     this.mouseFollowsFocusDelay = rc("MouseFollowsFocusDelay", 50);
     this.mouseFollowsFocusIgnoreEffects = rc(
@@ -1611,6 +1634,7 @@ var Config = class {
     this.customSettings = {
       mirrorLayout: rc("CustomMirrorLayout", false),
       rotateLayout: rc("CustomRotateLayout", false),
+      monocle: rc("CustomMonocle", false),
       customLayoutTab: 0,
       customLayouts: {}
     };
@@ -1658,6 +1682,8 @@ function escapeRegex(str) {
 var WindowHandler = class {
   constructor(window, workspace) {
     this.wasTiledBeforeMove = false;
+    this.tiledRect = null;
+    this.dragSizeApplied = false;
     this.window = window;
     this.workspace = workspace;
     this.wantsTiled = this.startTiled();
@@ -1758,6 +1784,9 @@ var WindowHandler = class {
     }
   }
   maximizedChanged(state) {
+    if (controller().isWindowOnKwinEngine(this.window)) {
+      return;
+    }
     console().debug(
       "maximized state changed on window",
       this.window.resourceClass
@@ -1773,30 +1802,88 @@ var WindowHandler = class {
     }
   }
   // multiple step move resize -
-  // if tiled and in a tile, then when move started, set is moving flag to true
-  // then if it leaves the tile in a later step, untile it
-  // after all that, if
+  // a tiled window is marked as dragging so the engine keeps its slot and the
+  // layout does not retile for n-1 windows; the drop either swaps it or floats it
   interactiveMoveResizeStarted() {
     this.wasTiledBeforeMove = controller().isWindowTiled(this.window) ?? false;
+    // The tile is still attached when the move starts; remember its size for
+    // the "keep the tiled size" and custom drag-size modes.
+    const geometry = this.window.tile?.absoluteGeometry ?? this.window.frameGeometry;
+    this.tiledRect = qt().rect(geometry.x, geometry.y, geometry.width, geometry.height);
+    this.dragSizeApplied = false;
   }
   interactiveMoveResizeStepped() {
+    if (controller().isWindowOnKwinEngine(this.window)) {
+      return;
+    }
     if (!controller().isWindowTiled(this.window) || !this.canBeTiled() || this.window.tile != null) {
+      return;
+    }
+    if (controller().isWindowInMonocle(this.window)) {
       return;
     }
     if (!this.wasTiledBeforeMove && config().windowDragPolicy !== 2 /* Never */) {
       return;
     }
     console().debug("move started on window", this.window.resourceClass);
+    this.applyDragSize();
     if (config().windowDragPolicy == 2 /* Never */) {
       this.wantsTiled = false;
+      controller().queueEvent({
+        t: "untileWindow",
+        window: this.window
+      });
+      return;
     }
+    // Leave the window in the engine, but out of KWin's tile, so the other
+    // windows keep their slots while it is dragged over them.
     controller().queueEvent({
-      t: "untileWindow",
+      t: "dragWindow",
       window: this.window
     });
   }
+  // A dragged window can be shown at the tiled size or a scaled-down version
+  // so it is easy to drop between tiles. Natural KWin behaviour is the default.
+  applyDragSize() {
+    if (this.dragSizeApplied) {
+      return;
+    }
+    this.dragSizeApplied = true;
+    const mode = config().dragWindowSize;
+    const source = this.tiledRect;
+    if (mode !== 1 && mode !== 2 || source === null || source.width <= 0 || source.height <= 0) {
+      return;
+    }
+    let width = source.width;
+    let height = source.height;
+    if (mode === 2) {
+      const percent = Math.min(100, Math.max(10, Number(config().dragWindowSizePercent) || 50));
+      width = Math.round(width * percent / 100);
+      height = Math.round(height * percent / 100);
+    }
+    const frame = this.window.frameGeometry;
+    const cursor = this.workspace.cursorPos;
+    // Keep the cursor at the same spot of the window so it does not jump
+    // out from under the pointer.
+    const relX = frame.width > 0 ? (cursor.x - frame.x) / frame.width : 0.5;
+    const relY = frame.height > 0 ? (cursor.y - frame.y) / frame.height : 0.5;
+    this.window.frameGeometry = qt().rect(
+      Math.round(cursor.x - width * relX),
+      Math.round(cursor.y - height * relY),
+      width,
+      height
+    );
+  }
   interactiveMoveResizeFinished() {
     if (!this.canBeTiled()) {
+      return;
+    }
+    if (!controller().isWindowOnKwinEngine(this.window) && this.wasTiledBeforeMove && this.wantsTiled && !controller().isWindowInMonocle(this.window)) {
+      controller().queueEvent({
+        t: "placeWindowPoint",
+        window: this.window,
+        point: this.getInsertionPoint()
+      });
       return;
     }
     let tiled = controller().isWindowTiled(this.window) === true;
@@ -1843,6 +1930,9 @@ var WindowHandler = class {
   }
   // this only tracks manual insertion into a tile
   tileChanged(tile) {
+    if (controller().isWindowOnKwinEngine(this.window) || controller().isWindowInMonocle(this.window)) {
+      return;
+    }
     // Trust the live tiling state instead of the previous signal value: a
     // shift-drag can land in a tile while KWin still reports the old tile.
     if (tile != null && !controller().isWindowTiled(this.window)) {
@@ -2164,16 +2254,16 @@ var ShortcutsHandler = class {
     this.shortcuts = shortcuts;
     this.shortcuts.toggleActiveTiling().activated.connect(this.toggleActiveTiling.bind(this));
     this.shortcuts.activateBelow().activated.connect(
-      this.activateInDirection.bind(this, 8 /* BottomEdge */)
+      this.activateRelative.bind(this, false)
     );
     this.shortcuts.activateAbove().activated.connect(
-      this.activateInDirection.bind(this, 1 /* TopEdge */)
+      this.activateRelative.bind(this, true)
     );
     this.shortcuts.activateLeft().activated.connect(
-      this.activateInDirection.bind(this, 2 /* LeftEdge */)
+      this.activateRelative.bind(this, true)
     );
     this.shortcuts.activateRight().activated.connect(
-      this.activateInDirection.bind(this, 4 /* RightEdge */)
+      this.activateRelative.bind(this, false)
     );
     this.shortcuts.placeBelow().activated.connect(
       this.placeInDirection.bind(this, 8 /* BottomEdge */)
@@ -2216,6 +2306,9 @@ var ShortcutsHandler = class {
     );
     this.shortcuts.toggleKwinEngine().activated.connect(
       this.toggleKwinEngine.bind(this)
+    );
+    this.shortcuts.toggleMonocle().activated.connect(
+      this.modifyEngineSetting.bind(this, "monocle", "toggle")
     );
   }
   // Returns the driver for the display in view, but only if it holds at least
@@ -2352,21 +2445,24 @@ var ShortcutsHandler = class {
     console().debug("selecting tile for point", point);
     return rootTile.pick(point);
   }
-  activateInDirection(edge) {
-    const currentTile = this.workspace.activeWindow?.tile;
-    if (currentTile == null) return;
-    let rootTile = currentTile;
-    while (rootTile.parent != null) {
-      rootTile = rootTile.parent;
+  // Left/Up step back through the engine's window order, Right/Down step
+  // forward, wrapping at the ends. No geometry picking.
+  activateRelative(backwards) {
+    const window = this.workspace.activeWindow;
+    if (window === null || window === void 0) {
+      return;
     }
-    const targetTile = this.getTileInDirection(currentTile, rootTile, edge);
-    if (targetTile == null) return;
-    console().log(
-      "activateInDirection geom -",
-      targetTile.absoluteGeometry
-    );
-    if (targetTile.windows.length == 0) return;
-    this.workspace.activeWindow = targetTile.windows[0];
+    const driver = controller().windowDriver(window);
+    if (driver === void 0) {
+      return;
+    }
+    const order = driver.windowOrder();
+    const index = order.indexOf(window);
+    if (index === -1 || order.length < 2) {
+      return;
+    }
+    const next = (index + (backwards ? -1 : 1) + order.length) % order.length;
+    this.workspace.activeWindow = order[next];
   }
   placeInDirection(edge) {
     const window = this.workspace.activeWindow;
@@ -2690,6 +2786,11 @@ var DBusHandler = class {
     this.dbusQml.resetSettings().arguments = [display.toString()];
     this.dbusQml.resetSettings().call();
   }
+  // Volatile layout/monocle state for the overview effect.
+  setState(display, stateJson) {
+    this.dbusQml.setState().arguments = [display.toString(), stateJson];
+    this.dbusQml.setState().call();
+  }
   // Script-wide options live in kwinrc, which the script itself cannot write,
   // so the saver writes the file for us on the rare occasion one changes.
   setGlobalSetting(key, value) {
@@ -2962,6 +3063,9 @@ var Driver = class {
     this.lastEngineSettings = null;
     this.invertedWindowMap = /* @__PURE__ */ new Map();
     this.untiledWindows = /* @__PURE__ */ new Set();
+    // Tiled windows the user is dragging in place. The engine keeps their
+    // slot, so the rest of the layout does not retile for one fewer window.
+    this.draggingWindows = /* @__PURE__ */ new Set();
     this.savedActiveWindow = null;
     if (engineSettings === void 0) {
       engineSettings = getConfigEngineSettings(engineType);
@@ -2996,12 +3100,21 @@ var Driver = class {
     const retileAll = this.tilingEngine.engineType === KWIN_ENGINE_TYPE;
     this.tilingEngine = new TilingEngine(engineType, engineSettings);
     for (const [kwinWindow, engineWindow] of this.windowMap) {
+      if (engineType === KWIN_ENGINE_TYPE) {
+        // Hand every window back to KWin exactly once. After this Polonium
+        // never manages, tiles or resizes anything on this display.
+        this.untiledWindows.add(kwinWindow);
+        releaseWindowTile(kwinWindow);
+        setUntiledProps(kwinWindow);
+        continue;
+      }
       if (!retileAll && this.untiledWindows.has(kwinWindow)) {
         continue;
       }
       this.untiledWindows.delete(kwinWindow);
       this.tilingEngine.addWindow(engineWindow);
     }
+    this.draggingWindows.clear();
   }
   // Swaps between KWin's untiled mode and the Custom engine.
   toggleKwinEngine() {
@@ -3053,6 +3166,10 @@ var Driver = class {
     if (!this.windowMap.has(kwinWindow)) {
       return void 0;
     }
+    // Polonium does not track tiling while KWin owns the layout.
+    if (this.tilingEngine.engineType === KWIN_ENGINE_TYPE) {
+      return void 0;
+    }
     // With the Custom engine a window can be tracked but have no leaf when the
     // selected set has fewer slots than open windows. Only a real tile counts.
     if (this.tilingEngine.engineType === CUSTOM_ENGINE_TYPE) {
@@ -3063,6 +3180,40 @@ var Driver = class {
       return engineWindow !== void 0 && this.tilingEngine.hasWindowTile(engineWindow);
     }
     return !this.untiledWindows.has(kwinWindow);
+  }
+  isWindowDragging(kwinWindow) {
+    return this.draggingWindows.has(kwinWindow);
+  }
+  setWindowDragging(kwinWindow, dragging) {
+    if (dragging) {
+      this.draggingWindows.add(kwinWindow);
+    } else {
+      this.draggingWindows.delete(kwinWindow);
+    }
+  }
+  isMonocle() {
+    return this.tilingEngine.engineType === CUSTOM_ENGINE_TYPE && this.getEngineSettings().monocle === true;
+  }
+  // KWin windows in engine order, which is the order the layout uses.
+  windowOrder() {
+    const windows = this.tilingEngine.engine?.windows;
+    if (!Array.isArray(windows)) {
+      return [];
+    }
+    const out = [];
+    for (const engineWindow of windows) {
+      const kwinWindow = this.invertedWindowMap.get(engineWindow);
+      if (kwinWindow !== void 0) {
+        out.push(kwinWindow);
+      }
+    }
+    return out;
+  }
+  stateJson() {
+    return JSON.stringify({
+      layout: this.shapeText(),
+      mono: this.isMonocle()
+    });
   }
   resetTilingEngine() {
     const defaultSettings = getConfigEngineSettings(CUSTOM_ENGINE_TYPE);
@@ -3082,6 +3233,15 @@ var Driver = class {
         console().warn("invalid window in windowMap");
         this.removeWindow(kwinWindow);
       }
+    }
+    if (this.tilingEngine.engineType === KWIN_ENGINE_TYPE) {
+      // KWin owns the tile tree here. Touching it every rebuild is what made a
+      // drag alternate between the tiled and the natural size.
+      this.tileMap.clear();
+      this.kwinRootTile = null;
+      this.engineRootTile = null;
+      this.draggingWindows.clear();
+      return;
     }
     this.engineRootTile = this.tilingEngine.buildLayout();
     this.tileMap = buildLayout(rootTile, this.engineRootTile);
@@ -3109,6 +3269,12 @@ var Driver = class {
       for (const engineWindow of engineTile.windows) {
         const kwinWindow = invertedWindowMap.get(engineWindow);
         if (kwinWindow === void 0) {
+          continue;
+        }
+        // A window being dragged keeps its leaf and its neighbours' tiles; it
+        // is just not re-managed until the drop decides where it belongs.
+        if (this.draggingWindows.has(kwinWindow)) {
+          tiledWindows.add(kwinWindow);
           continue;
         }
         console().debug(
@@ -3283,6 +3449,7 @@ var Driver = class {
   }
   removeWindow(kwinWindow) {
     const wasUntiled = this.untiledWindows.delete(kwinWindow);
+    this.draggingWindows.delete(kwinWindow);
     const engineWindow = this.windowMap.get(kwinWindow);
     if (engineWindow === void 0) {
       console().warn(
@@ -3635,6 +3802,7 @@ var Controller = class {
           // Rebuilding the engine state keeps the driver consistent when the
           // user switches back to this activity.
           driver.buildState(display);
+          this.dbusHandler?.setState(display, driver.stateJson());
           continue;
         }
         const rootTile = this.workspace.rootTile(
@@ -3643,6 +3811,7 @@ var Controller = class {
         );
         if (rootTile != void 0) {
           driver.buildLayout(rootTile, display);
+          this.dbusHandler?.setState(display, driver.stateJson());
           rebuilt = true;
         }
       }
@@ -3698,6 +3867,8 @@ var Controller = class {
           return this.evPlaceWindow(ev.window, ev.tile, ev.direction);
         case "placeWindowPoint":
           return this.evPlaceWindowPoint(ev.window, ev.point);
+        case "dragWindow":
+          return this.evDragWindow(ev.window);
         case "windowActivated":
           return this.evWindowActivated(ev.window);
         case "updateDrivers":
@@ -3735,6 +3906,39 @@ var Controller = class {
     }
     return [];
   }
+  // Optional placement for windows that start out floating. 1..9 are the
+  // cells of a 3x3 grid over the window's output; 0 leaves it to KWin.
+  placeFloatingWindow(window, output) {
+    const spot = config().floatingSpawnPoint;
+    if (!(spot >= 1 && spot <= 9) || output === null || output === void 0) {
+      return;
+    }
+    if (window.fullScreen || window.minimized || window.maximizeMode !== 0) {
+      return;
+    }
+    const area = output.geometry;
+    if (area === null || area === void 0) {
+      return;
+    }
+    const frame = window.frameGeometry;
+    const width = frame.width;
+    const height = frame.height;
+    const col = (spot - 1) % 3;
+    const row = Math.floor((spot - 1) / 3);
+    let x = area.x;
+    let y = area.y;
+    if (col === 1) {
+      x = area.x + Math.round((area.width - width) / 2);
+    } else if (col === 2) {
+      x = area.x + area.width - width;
+    }
+    if (row === 1) {
+      y = area.y + Math.round((area.height - height) / 2);
+    } else if (row === 2) {
+      y = area.y + area.height - height;
+    }
+    window.frameGeometry = qt().rect(x, y, width, height);
+  }
   evNewWindow(window, forceTile, tile, direction) {
     console().log("registering window", window.resourceClass);
     const handler = new WindowHandler(window, this.workspace);
@@ -3745,8 +3949,11 @@ var Controller = class {
       if (driver === void 0) {
         continue;
       }
-      if (forceTile === false || forceTile === void 0 && !handler.wantsTiled) {
+      if (driver.getEngineType() === KWIN_ENGINE_TYPE || forceTile === false || forceTile === void 0 && !handler.wantsTiled) {
         driver.addWindowUntiled(window);
+        if (driver.getEngineType() !== KWIN_ENGINE_TYPE) {
+          this.placeFloatingWindow(window, display.output);
+        }
       } else if (forceTile === true && tile != void 0 && driver.hasTile(tile)) {
         driver.placeWindow(window, tile, direction);
       } else if (driver.isFull()) {
@@ -3933,6 +4140,18 @@ var Controller = class {
     }
     return displays;
   }
+  evDragWindow(window) {
+    const ret = [];
+    for (const display of Display.generateWindow(window)) {
+      const driver = this.getDriver(display);
+      if (driver === void 0) {
+        continue;
+      }
+      driver.setWindowDragging(window, true);
+      ret.push(display);
+    }
+    return ret;
+  }
   evPlaceWindowPoint(window, point) {
     if (!this.windowExists(window)) {
       return this.evDeleteWindow(window, []);
@@ -3948,6 +4167,7 @@ var Controller = class {
       const driver = this.getDriver(display);
       if (driver == void 0) continue;
       displays.push(display);
+      driver.setWindowDragging(window, false);
       if (display.activity !== this.workspace.currentActivity) {
         if (driver.hasWindow(window)) {
           driver.tileWindow(window);
@@ -3962,10 +4182,11 @@ var Controller = class {
       );
       const tile = rootTile.tiles.length == 0 ? rootTile : rootTile.pick(point);
       if (tile === null || !driver.hasTile(tile)) {
+        // Dropped outside the tiles: it floats where the user left it.
         if (driver.hasWindow(window)) {
-          driver.tileWindow(window);
+          driver.untileWindow(window);
         } else {
-          driver.addWindow(window);
+          driver.addWindowUntiled(window);
         }
       } else {
         const direction = directionFromPoint(
@@ -4039,6 +4260,10 @@ var Controller = class {
     console().log("updating tiles for display", display.toString());
     const driver = this.getDriver(display);
     if (driver === void 0) {
+      return [];
+    }
+    // KWin owns the layout; Polonium has no tiles of its own to update.
+    if (driver.getEngineType() === KWIN_ENGINE_TYPE) {
       return [];
     }
     driver.updateTiles();
@@ -4316,6 +4541,23 @@ var Controller = class {
       }
     }
     return false;
+  }
+  // The driver that actually holds this window, for engine questions that do
+  // not need a full display rebuild.
+  windowDriver(window) {
+    for (const display of Display.generateWindow(window)) {
+      const driver = this.getDriver(display);
+      if (driver !== void 0 && driver.hasWindow(window)) {
+        return driver;
+      }
+    }
+    return void 0;
+  }
+  isWindowInMonocle(window) {
+    return this.windowDriver(window)?.isMonocle() === true;
+  }
+  isWindowOnKwinEngine(window) {
+    return this.windowDriver(window)?.getEngineType() === KWIN_ENGINE_TYPE;
   }
 };
 var controllerObj;
