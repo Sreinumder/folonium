@@ -13,6 +13,9 @@ import { BoxIndex, WindowBox } from "./stackingcommon";
 import { console } from "../../controller";
 
 class HalfEngineSettings extends BaseEngineSettings {
+    constructor() {
+        super();
+    }
     middleSplit: number = 0.5;
     swapInsertSide: boolean = false;
     rotateLayout: boolean = false;

@@ -12,6 +12,9 @@ import { Queue, Stack, StackLike } from "../../util";
 import { console } from "../../controller";
 
 class BTreeSettings extends BaseEngineSettings {
+    constructor() {
+        super();
+    }
     swapInsertSide: boolean = false;
     rotateLayout: boolean = false;
     insertionStyle: InsertionStyle = InsertionStyle.Shallow;

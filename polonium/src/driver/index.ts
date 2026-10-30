@@ -380,6 +380,8 @@ function getConfigEngineSettings(engineType: TilingEngineType): object {
         case TilingEngineType.KWin:
             // no settings for kwin
             return {};
+        case TilingEngineType.Custom:
+            return config().customSettings;
         default:
             console().error("engine type", engineType, "is invalid");
             return {};

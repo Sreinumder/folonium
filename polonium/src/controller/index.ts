@@ -811,8 +811,8 @@ let configObj: Config;
 let qtObject: Qt;
 
 export function initializeController(qmlApi: QmlApi, qmlObjects: QmlObjects) {
-    configObj = new Config(qmlApi.kwin);
     consoleObj = new Console(qmlApi.console);
+    configObj = new Config(qmlApi.kwin);
     qtObject = qmlApi.qt;
     console().debug("config -", JSON.stringify(config()));
     controllerObj = new Controller(qmlApi, qmlObjects);

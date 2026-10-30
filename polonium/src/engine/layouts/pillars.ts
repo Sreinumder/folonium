@@ -28,6 +28,9 @@ export enum InsertionStyle {
 }
 
 class PillarEngineSettings extends BaseEngineSettings {
+    constructor() {
+        super();
+    }
     pillarCount: number = 3;
     swapInsertSide: boolean = false;
     rotateLayout: boolean = false;

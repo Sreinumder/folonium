@@ -11,6 +11,9 @@ import {
 } from "../engine";
 
 class PagerSettings extends BaseEngineSettings {
+    constructor() {
+        super();
+    }
     pageWidth: number = 0.15;
     swapInsertSide: boolean = false;
     rotateLayout: boolean = false;

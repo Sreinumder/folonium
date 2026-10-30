@@ -4,6 +4,7 @@ import {
     PillarsInsertionStyle,
     TilingEngineType,
 } from "../engine";
+import { console } from "./index";
 
 export enum LogLevel {
     Error = 0,
@@ -51,6 +52,7 @@ export class Config {
     readonly threeColumnSettings: object;
     readonly pillarSettings: object;
     readonly pagerSettings: object;
+    readonly customSettings: object;
 
     readonly borders: Borders;
     readonly tiledWindowsBelow: boolean;
@@ -121,6 +123,21 @@ export class Config {
             pageWidth: rc("PagerPageWidth", 0.15),
             swapInsertSide: rc("PagerSwapInsertSide", false),
             rotateLayout: rc("PagerRotateLayout", false),
+        };
+        const layoutsJson = rc("CustomLayouts", "");
+        const ratiosJson = rc("CustomRatios", "");
+        console().warn("CustomSettings from kwinrc:", {layoutsJson, ratiosJson,
+            layoutIndex: rc("CustomLayoutIndex", 0),
+            horizontalRatioIndex: rc("CustomHorizontalRatioIndex", 0),
+            verticalRatioIndex: rc("CustomVerticalRatioIndex", 0),
+            windowOrderOffset: rc("CustomWindowOrderOffset", 0)});
+        this.customSettings = {
+            layoutsJson,
+            ratiosJson,
+            layoutIndex: rc("CustomLayoutIndex", 0),
+            horizontalRatioIndex: rc("CustomHorizontalRatioIndex", 0),
+            verticalRatioIndex: rc("CustomVerticalRatioIndex", 0),
+            windowOrderOffset: rc("CustomWindowOrderOffset", 0),
         };
 
         this.ultrawideSingleWindow = rc("UltrawideSingleWindow", false);

@@ -116,6 +116,31 @@ export class ShortcutsHandler {
         this.shortcuts
             .rotateLayout()
             .activated.connect(this.rotateLayout.bind(this));
+
+        // Custom Engine shortcuts
+        this.shortcuts
+            .setEngineCustom()
+            .activated.connect(
+                this.setEngineType.bind(this, TilingEngineType.Custom),
+            );
+        this.shortcuts
+            .customRotateLayout()
+            .activated.connect(this.customRotateLayout.bind(this));
+        this.shortcuts
+            .customMirrorLayout()
+            .activated.connect(this.customMirrorLayout.bind(this));
+        this.shortcuts
+            .customCycleHorizontalRatio()
+            .activated.connect(this.customCycleHorizontalRatio.bind(this));
+        this.shortcuts
+            .customCycleVerticalRatio()
+            .activated.connect(this.customCycleVerticalRatio.bind(this));
+        this.shortcuts
+            .customCycleLayout()
+            .activated.connect(this.customCycleLayout.bind(this));
+        this.shortcuts
+            .customCycleWindowOrder()
+            .activated.connect(this.customCycleWindowOrder.bind(this));
     }
 
     toggleActiveTiling() {
@@ -347,6 +372,49 @@ export class ShortcutsHandler {
             t: "changeEngine",
             display: display,
             engineSettings: newSettings,
+        });
+    }
+
+    // Custom Engine shortcut handlers
+    customRotateLayout() {
+        this.sendCustomAction("rotateLayout");
+    }
+
+    customMirrorLayout() {
+        this.sendCustomAction("mirrorLayout");
+    }
+
+    customCycleHorizontalRatio() {
+        this.sendCustomAction("cycleHorizontalRatio");
+    }
+
+    customCycleVerticalRatio() {
+        this.sendCustomAction("cycleVerticalRatio");
+    }
+
+    customCycleLayout() {
+        this.sendCustomAction("cycleLayout");
+    }
+
+    customCycleWindowOrder() {
+        this.sendCustomAction("cycleWindowOrder");
+    }
+
+    private sendCustomAction(action: string) {
+        const display = new Display(
+            this.workspace.currentDesktop,
+            this.workspace.currentActivity,
+            this.workspace.activeScreen,
+        );
+        const engineSettings = ctrl().getEngineSettings(display);
+        if (engineSettings === undefined) return;
+        // Send action via settings - the engine will handle it on next rebuild
+        // For now, we just trigger a rebuild with the same settings
+        // The engine reads the action from settings or we could add a direct call
+        ctrl().queueEvent({
+            t: "changeEngine",
+            display: display,
+            engineSettings: Object.assign({}, engineSettings, { _customAction: action }),
         });
     }
 

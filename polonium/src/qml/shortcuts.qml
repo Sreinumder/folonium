@@ -241,6 +241,84 @@ Item {
         text: "Polonium: Rotate Layout";
         sequence: "";
     }
+
+    // Custom Engine Shortcuts
+    function setEngineCustom() {
+        return setEngineCustomObj;
+    }
+    ShortcutHandler {
+        id: setEngineCustomObj;
+        
+        name: "PoloniumSetEngineCustom";
+        text: "Polonium: Use Custom Engine";
+        sequence: "";
+    }
+
+    function customRotateLayout() {
+        return customRotateLayoutObj;
+    }
+    ShortcutHandler {
+        id: customRotateLayoutObj;
+        
+        name: "PoloniumCustomRotateLayout";
+        text: "Polonium: Custom Rotate Layout";
+        sequence: "";
+    }
+
+    function customMirrorLayout() {
+        return customMirrorLayoutObj;
+    }
+    ShortcutHandler {
+        id: customMirrorLayoutObj;
+        
+        name: "PoloniumCustomMirrorLayout";
+        text: "Polonium: Custom Mirror Layout";
+        sequence: "";
+    }
+
+    function customCycleHorizontalRatio() {
+        return customCycleHorizontalRatioObj;
+    }
+    ShortcutHandler {
+        id: customCycleHorizontalRatioObj;
+        
+        name: "PoloniumCustomCycleHorizontalRatio";
+        text: "Polonium: Custom Cycle Horizontal Ratio";
+        sequence: "";
+    }
+
+    function customCycleVerticalRatio() {
+        return customCycleVerticalRatioObj;
+    }
+    ShortcutHandler {
+        id: customCycleVerticalRatioObj;
+        
+        name: "PoloniumCustomCycleVerticalRatio";
+        text: "Polonium: Custom Cycle Vertical Ratio";
+        sequence: "";
+    }
+
+    function customCycleLayout() {
+        return customCycleLayoutObj;
+    }
+    ShortcutHandler {
+        id: customCycleLayoutObj;
+        
+        name: "PoloniumCustomCycleLayout";
+        text: "Polonium: Custom Cycle Layout";
+        sequence: "";
+    }
+
+    function customCycleWindowOrder() {
+        return customCycleWindowOrderObj;
+    }
+    ShortcutHandler {
+        id: customCycleWindowOrderObj;
+        
+        name: "PoloniumCustomCycleWindowOrder";
+        text: "Polonium: Custom Cycle Window Order";
+        sequence: "";
+    }
     /*
     function getSwitchThreeColumn() {
         return switchThreeColumn;

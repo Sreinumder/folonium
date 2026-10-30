@@ -12,6 +12,9 @@ import {
 import { BoxIndex, WindowBox } from "./stackingcommon";
 
 class ThreeColumnEngineSettings extends BaseEngineSettings {
+    constructor() {
+        super();
+    }
     side1Size: number = 0.25;
     side2Size: number = 0.25;
     swapInsertSide: boolean = false;

@@ -49,6 +49,15 @@ export interface Shortcuts {
     toggleSettingsMenu(): ShortcutHandler;
     cycleEngine(): ShortcutHandler;
     rotateLayout(): ShortcutHandler;
+
+    // Custom Engine
+    setEngineCustom(): ShortcutHandler;
+    customRotateLayout(): ShortcutHandler;
+    customMirrorLayout(): ShortcutHandler;
+    customCycleHorizontalRatio(): ShortcutHandler;
+    customCycleVerticalRatio(): ShortcutHandler;
+    customCycleLayout(): ShortcutHandler;
+    customCycleWindowOrder(): ShortcutHandler;
 }
 
 export interface Settings extends QObject {

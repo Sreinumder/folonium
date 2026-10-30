@@ -53,6 +53,7 @@ src: polonium.mjs $(PKGDIR)
 
 polonium.mjs: node_modules
 	npx esbuild --bundle src/index.ts --outfile=polonium.mjs --format=esm --platform=neutral
+	node transpile-spread.js polonium.mjs
 
 node_modules:
 	npm ci
