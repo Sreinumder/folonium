@@ -41,6 +41,18 @@ class CustomEngineSettings extends BaseEngineSettings {
     verticalRatioIndex: number = 0;
     windowOrderOffset: number = 0;
 
+    // Per-window-count layout configs (from kwinrc CustomLayout1-10)
+    layout1: string = "";
+    layout2: string = "";
+    layout3: string = "";
+    layout4: string = "";
+    layout5: string = "";
+    layout6: string = "";
+    layout7: string = "";
+    layout8: string = "";
+    layout9: string = "";
+    layout10: string = "";
+
     getProps(): object {
         return {
             layoutsJson: this.layoutsJson,
@@ -49,40 +61,86 @@ class CustomEngineSettings extends BaseEngineSettings {
             horizontalRatioIndex: this.horizontalRatioIndex,
             verticalRatioIndex: this.verticalRatioIndex,
             windowOrderOffset: this.windowOrderOffset,
+            layout1: this.layout1,
+            layout2: this.layout2,
+            layout3: this.layout3,
+            layout4: this.layout4,
+            layout5: this.layout5,
+            layout6: this.layout6,
+            layout7: this.layout7,
+            layout8: this.layout8,
+            layout9: this.layout9,
+            layout10: this.layout10,
         };
     }
     setProps(obj: any): void {
+        console().error("CustomEngine.setProps CALLED");
         if (obj == null) return;
+        console().warn("CustomEngine.setProps: obj keys:", Object.keys(obj));
         for (const key in this) {
-            if (obj.hasOwnProperty(key)) this[key] = obj[key];
+            if (obj.hasOwnProperty(key)) {
+                console().warn("CustomEngine.setProps: setting", key, "=", obj[key]);
+                this[key] = obj[key];
+            }
         }
+        console().warn("CustomEngine.setProps: after copy, layout1:", this.layout1, "layout2:", this.layout2, "layout3:", this.layout3);
         this.parseLayouts();
         this.parseRatios();
     }
 
     parseLayouts(): void {
         this.layouts = [];
-        if (!this.layoutsJson || !this.layoutsJson.trim()) return;
-        // Handle escaped newlines and other special chars from kwinrc
-        let json = this.layoutsJson.replace(/\n/g, ' ').replace(/\t/g, ' ').replace(/\r/g, ' ');
-        const tokens = json.trim().split(/\s+/).filter(t => t.length > 0);
-        for (const token of tokens) {
-            const t = token.trim();
-            if (!t) continue;
-            let cols: number[];
-            let rotated = false;
-            if (t.startsWith("[") && t.endsWith("]")) {
-                cols = t.slice(1, -1).split(/\s+/).map(n => parseInt(n, 10)).filter(n => !isNaN(n));
-            } else if (t.startsWith("/") && t.endsWith("/")) {
-                cols = t.slice(1, -1).split(/\s+/).map(n => parseInt(n, 10)).filter(n => !isNaN(n));
-                rotated = true;
-            } else {
-                continue;
+        console().warn("CustomEngine.parseLayouts: layout1:", this.layout1, "layout2:", this.layout2, "layout3:", this.layout3);
+        
+        // Parse global layoutsJson if present (legacy)
+        if (this.layoutsJson && this.layoutsJson.trim()) {
+            const tokens = this.layoutsJson.trim().split(/\s+/);
+            for (const token of tokens) {
+                const t = token.trim();
+                if (!t) continue;
+                let cols: number[];
+                let rotated = false;
+                if (t.startsWith("[") && t.endsWith("]")) {
+                    cols = t.slice(1, -1).split(/\s+/).map(n => parseInt(n, 10)).filter(n => !isNaN(n));
+                } else if (t.startsWith("/") && t.endsWith("/")) {
+                    cols = t.slice(1, -1).split(/\s+/).map(n => parseInt(n, 10)).filter(n => !isNaN(n));
+                    rotated = true;
+                } else {
+                    continue;
+                }
+                if (cols.length === 0) continue;
+                const windowCount = cols.reduce((a, b) => a + b, 0);
+                this.layouts.push({ cols, rotated, windowCount });
             }
-            if (cols.length === 0) continue;
-            const windowCount = cols.reduce((a, b) => a + b, 0);
-            this.layouts.push({ cols, rotated, windowCount });
         }
+
+        // Parse per-window-count layouts from layout1-10
+        for (let count = 1; count <= 10; count++) {
+            const layoutStr = this["layout" + count];
+            console().warn("CustomEngine.parseLayouts: layout" + count + " = " + layoutStr);
+            if (!layoutStr || !layoutStr.trim()) continue;
+            
+            const tokens = layoutStr.trim().split(/\s+/);
+            console().warn("CustomEngine.parseLayouts: layout" + count + " tokens:", tokens);
+            for (const token of tokens) {
+                const t = token.trim();
+                if (!t) continue;
+                let cols: number[];
+                let rotated = false;
+                if (t.startsWith("[") && t.endsWith("]")) {
+                    cols = t.slice(1, -1).split(/\s+/).map(n => parseInt(n, 10)).filter(n => !isNaN(n));
+                } else if (t.startsWith("/") && t.endsWith("/")) {
+                    cols = t.slice(1, -1).split(/\s+/).map(n => parseInt(n, 10)).filter(n => !isNaN(n));
+                    rotated = true;
+                } else {
+                    continue;
+                }
+                if (cols.length === 0) continue;
+                const windowCount = cols.reduce((a, b) => a + b, 0);
+                this.layouts.push({ cols, rotated, windowCount });
+            }
+        }
+        
         // Sort by windowCount for cycling
         this.layouts.sort((a, b) => a.windowCount - b.windowCount);
     }
@@ -113,7 +171,7 @@ class CustomEngineSettings extends BaseEngineSettings {
 
     getCurrentLayout(windowCount: number): CustomLayout | null {
         const candidates = this.getLayoutsForCount(windowCount);
-        console().warn("CustomEngine.getCurrentLayout: windowCount:", windowCount, "candidates:", candidates.length, "layoutIndex:", this.layoutIndex, "layouts:", this.layouts.map(l=>l.cols+":"+l.rotated));
+        console().warn("CustomEngine.getCurrentLayout: windowCount:", windowCount, "candidates:", candidates.length, "layoutIndex:", this.layoutIndex);
         if (candidates.length === 0) {
             // Fallback: next larger layout
             const larger = this.layouts.find(l => l.windowCount > windowCount);
@@ -147,6 +205,8 @@ export class CustomEngine implements TilingEngineInterface {
         return this.settings.getProps();
     }
     setEngineSettings(settings: object): void {
+        console().warn("CustomEngine.setEngineSettings CALLED - THROWING");
+        throw new Error("setEngineSettings called");
         this.settings.setProps(settings);
     }
 

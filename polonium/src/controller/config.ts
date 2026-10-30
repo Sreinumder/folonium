@@ -126,6 +126,17 @@ export class Config {
         };
         const layoutsJson = rc("CustomLayouts", "");
         const ratiosJson = rc("CustomRatios", "");
+        const layout1 = rc("CustomLayout1", "");
+        const layout2 = rc("CustomLayout2", "");
+        const layout3 = rc("CustomLayout3", "");
+        const layout4 = rc("CustomLayout4", "");
+        const layout5 = rc("CustomLayout5", "");
+        const layout6 = rc("CustomLayout6", "");
+        const layout7 = rc("CustomLayout7", "");
+        const layout8 = rc("CustomLayout8", "");
+        const layout9 = rc("CustomLayout9", "");
+        const layout10 = rc("CustomLayout10", "");
+        console().warn("CustomSettings layouts:", {layout1, layout2, layout3, layout4, layout5, layout6, layout7, layout8, layout9, layout10});
         this.customSettings = {
             layoutsJson,
             ratiosJson,
@@ -133,6 +144,17 @@ export class Config {
             horizontalRatioIndex: rc("CustomHorizontalRatioIndex", 0),
             verticalRatioIndex: rc("CustomVerticalRatioIndex", 0),
             windowOrderOffset: rc("CustomWindowOrderOffset", 0),
+            // Per-window-count layouts
+            layout1,
+            layout2,
+            layout3,
+            layout4,
+            layout5,
+            layout6,
+            layout7,
+            layout8,
+            layout9,
+            layout10,
         };
 
         this.ultrawideSingleWindow = rc("UltrawideSingleWindow", false);

@@ -38,6 +38,7 @@ export class TilingEngine {
     readonly engineType: TilingEngineType;
 
     constructor(type: TilingEngineType, settings: object) {
+        console().error("TILING ENGINE CONSTRUCTOR START: type=" + type + " settings keys=" + Object.keys(settings));
         this.engineType = type;
         switch (type) {
             case TilingEngineType.BTree:
@@ -67,6 +68,7 @@ export class TilingEngine {
                 this.engine = new BTreeEngine();
                 break;
         }
+        console().warn("TilingEngine constructor: type:", type, "settings:", settings);
         this.engine.setEngineSettings(settings);
         this.engineRootTile = this.engine.buildLayout();
     }

@@ -69,23 +69,30 @@ PlasmaCore.Dialog {
     signal saveSettings(desktop: var, activity: var, output: var, engineType: int, engineSettings: var);
     signal resetSettings(desktop: var, activity: var, output: var);
 
+    // Helper: get layout text for a window count
+    function getLayoutText(count) {
+        return engineSettings["CustomLayout" + count] ?? "";
+    }
     
+    // Helper: set layout text for a window count
+    function setLayoutText(count, text) {
+        engineSettings["CustomLayout" + count] = text;
+    }
 
                 
     mainItem: GridLayout {
         columns: 2;
-        // i feel like PlasmaCore.Dialog incorrectly implements this because theres no padding
         Layout.alignment: Qt.AlignHCenter;
         columnSpacing: 10;
         Layout.margins: 20;
-        // change biggestLabel to be the id of whatever label is biggest
-        Layout.preferredWidth: biggestLabel.implicitWidth * 2;
+        Layout.preferredWidth: 600;
 
+        // Engine Selection
         PC3.Label {
             text: "Engine:";
         }
         PC3.ComboBox {
-            model: ["Binary Tree", "Half", "Three Column", "Pillars", "Pager"];
+            model: ["Binary Tree", "Half", "Three Column", "Pillars", "Pager", "Custom"];
             currentIndex: root.engineType;
             popup.y: height;
             onActivated: (idx) => {
@@ -94,6 +101,72 @@ PlasmaCore.Dialog {
             }
         }
 
+        // ========== CUSTOM ENGINE SECTION ==========
+        // Only visible when Custom engine is selected
+        PC3.Label {
+            visible: root.engineType === 6;
+            Layout.columnSpan: 2;
+            text: "<b>Custom Engine Configuration</b>";
+            font.pixelSize: 14;
+        }
+
+        // Ratios field (global for all window counts)
+        PC3.Label {
+            visible: root.engineType === 6;
+            text: "Ratios (global):";
+        }
+        PC3.TextArea {
+            visible: root.engineType === 6;
+            Layout.fillWidth: true;
+            Layout.preferredHeight: 80;
+            text: root.engineSettings.CustomRatios ?? "";
+            placeholderText: "e.g. 2:1 3:2 1:1 2:3 1:2\n1:1:1 2:1:1 1:2:1 1:1:2\n1:1:1:1 2:1:1:1 1:2:1:1 1:1:2:1";
+            onTextChanged: {
+                root.engineSettings.CustomRatios = this.text;
+                root.saveSettingsFn();
+            }
+        }
+
+        // Window count selector
+        PC3.Label {
+            visible: root.engineType === 6;
+            text: "Window Count:";
+        }
+        PC3.ComboBox {
+            id: windowCountCombo;
+            visible: root.engineType === 6;
+            Layout.fillWidth: true;
+            model: ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", "L10"];
+            currentIndex: 0;
+            onActivated: (idx) => {
+                // Force UI update
+                layoutTextArea.text = root.engineSettings["CustomLayout" + (idx + 1)] ?? "";
+            }
+        }
+
+        // Layout text area for selected window count
+        PC3.Label {
+            visible: root.engineType === 6;
+            Layout.columnSpan: 2;
+            text: "Layouts for selected window count (one per line):";
+        }
+        PC3.TextArea {
+            id: layoutTextArea;
+            visible: root.engineType === 6;
+            Layout.fillWidth: true;
+            Layout.fillHeight: true;
+            Layout.preferredHeight: 300;
+            Layout.columnSpan: 2;
+            text: root.engineSettings.CustomLayout1 ?? "";
+            placeholderText: "Enter layouts for this window count, one per line:\n[1 1] /1 1/ [1 2] [2 1]";
+            onTextChanged: {
+                const count = windowCountCombo.currentIndex + 1;
+                root.engineSettings["CustomLayout" + count] = this.text;
+                root.saveSettingsFn();
+            }
+        }
+
+        // ========== EXISTING ENGINE SETTINGS ==========
         PC3.Label {
             visible: root.hasProp("rotateLayout");
             text: "Rotate Layout:";
@@ -124,7 +197,6 @@ PlasmaCore.Dialog {
             visible: root.hasProp("middleSplit");
             text: "Middle Split:";
         }
-        // why does PC3 not have a double spin box???
         PC3.SpinBox {
             visible: root.hasProp("middleSplit");
             from: 15;
