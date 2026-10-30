@@ -16,6 +16,9 @@
         <entry name="RawRegex" type="bool"><default>false</default></entry>
         <entry name="Borders" type="int"><default>4</default></entry>
         <entry name="TiledWindowsBelow" type="bool"><default>true</default></entry>
+        <entry name="MouseFollowsFocus" type="bool"><default>false</default></entry>
+        <entry name="MouseFollowsFocusDelay" type="int"><default>50</default></entry>
+        <entry name="MouseFollowsFocusIgnoreEffects" type="string"><default>betteroverview</default></entry>
         <entry name="TilePopups" type="bool"><default>false</default></entry>
         <entry name="WindowDragPolicy" type="int"><default>1</default></entry>
         <entry name="DragRetilePoint" type="int"><default>0</default></entry>

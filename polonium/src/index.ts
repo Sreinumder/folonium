@@ -1596,6 +1596,12 @@ var Config = class {
     this.tilePopups = rc("TilePopups", false);
     this.windowDragPolicy = rc("WindowDragPolicy", 1 /* Tiled */);
     this.dragRetilePoint = rc("DragRetilePoint", 0 /* Mouse */);
+    this.mouseFollowsFocus = rc("MouseFollowsFocus", false);
+    this.mouseFollowsFocusDelay = rc("MouseFollowsFocusDelay", 50);
+    this.mouseFollowsFocusIgnoreEffects = rc(
+      "MouseFollowsFocusIgnoreEffects",
+      "betteroverview"
+    ).split(",").map((x) => x.trim()).filter(Boolean);
     // Keep all nine slots so L1..L9 indices do not shift when a tab is empty.
     this.customLayoutTexts = [];
     for (let i = 1; i <= CUSTOM_MAX_WINDOWS; i += 1) {
@@ -1868,6 +1874,12 @@ var WorkspaceHandler = class {
     this.workspace.currentActivityChanged.connect(
       this.rebuildDesktops.bind(this)
     );
+    this.workspace.currentActivityChanged.connect(
+      () => controller().mouseFollowsFocus()?.displayChanged()
+    );
+    this.workspace.currentDesktopChanged.connect(
+      () => controller().mouseFollowsFocus()?.displayChanged()
+    );
     this.workspace.screensChanged.connect(this.updateDrivers.bind(this));
     this.workspace.desktopsChanged.connect(this.updateDrivers.bind(this));
     this.workspace.activityAdded.connect(this.updateDrivers.bind(this));
@@ -1901,6 +1913,7 @@ var WorkspaceHandler = class {
     }, true);
   }
   windowRemoved(window) {
+    controller().mouseFollowsFocus()?.windowRemoved(window);
     // KWin may clear a window's desktop/activity/output before emitting this
     // signal. Never let that stop the delete event: the controller also
     // searches its live drivers for the window.
@@ -1923,6 +1936,7 @@ var WorkspaceHandler = class {
     controller().queueEvent({ t: "updateDrivers" });
   }
   windowActivated(window) {
+    controller().mouseFollowsFocus()?.windowActivated(window);
     // Popups are not part of the tiled workspace, so activating a context menu
     // must not replace the tiled window that the next window inherits from.
     if (window !== null && !isTrackableWindow(window)) {
@@ -1954,6 +1968,194 @@ var WorkspaceHandler = class {
     });
   }
 };
+
+// src/controller/handlers/mousefollowsfocus.ts
+var displayChangeQuietMs = 250;
+var hitTestDepth = 8;
+// KWin's delayed focus-follows-mouse lands up to 300 ms after the pointer stops.
+var pointerQuietMs = 400;
+var MouseFollowsFocusHandler = class {
+  constructor(workspace, timer, dbus) {
+    this.target = null;
+    this.armPos = null;
+    this.lastWindow = null;
+    this.quietUntil = 0;
+    this.lastMotion = 0;
+    this.wasInside = false;
+    this.rebuildPos = null;
+    this.workspace = workspace;
+    this.timer = timer;
+    this.dbus = dbus;
+    this.timer.interval = config().mouseFollowsFocusDelay;
+    this.timer.repeat = false;
+    this.timer.triggered.connect(this.warp.bind(this));
+    this.workspace.cursorPosChanged.connect(() => {
+      this.lastMotion = Date.now();
+    });
+  }
+  windowActivated(window) {
+    if (this.effectOpen()) {
+      this.reset();
+      return;
+    }
+    if (!isMouseTargetable(window)) {
+      return;
+    }
+    // Focus handed back after a shell popup or effect closes.
+    if (window === this.lastWindow) {
+      return;
+    }
+    this.lastWindow = window;
+    if (Date.now() < this.quietUntil) {
+      return;
+    }
+    if (this.cursorInside(window)) {
+      // Focus landed under a stationary cursor on its own - that is
+      // focus-follows-mouse reverting a keyboard focus change, so keep the
+      // pending warp. A moved cursor means the user did it.
+      if (this.target !== null && !this.cursorMoved()) {
+        return;
+      }
+      this.target = null;
+      this.armPos = null;
+      this.timer.stop();
+      return;
+    }
+    // Keyboard and script activations raise the window first; a delayed
+    // focus-follows-mouse activation never does.
+    if (!this.isRaised(window) && this.motionAge() < pointerQuietMs) {
+      return;
+    }
+    this.target = window;
+    this.armPos = copyPos(this.workspace.cursorPos);
+    this.timer.restart();
+  }
+  // Called by the controller right before it rebuilds layouts.
+  beforeRebuild() {
+    const active = this.workspace.activeWindow;
+    this.wasInside = isMouseTargetable(active) && this.cursorInside(active);
+    this.rebuildPos = copyPos(this.workspace.cursorPos);
+  }
+  // Called after rebuilding; a retile can move the focused window out from
+  // under the cursor without any activation.
+  retiled() {
+    if (this.effectOpen()) {
+      this.reset();
+      return;
+    }
+    if (Date.now() < this.quietUntil) {
+      return;
+    }
+    if (this.target === null && !this.wasInside) {
+      this.timer.stop();
+      return;
+    }
+    this.timer.restart();
+  }
+  // Desktop switches, drags and move-to-desktop change focus without a
+  // keyboard focus move.
+  displayChanged() {
+    this.quietUntil = Date.now() + displayChangeQuietMs;
+    this.target = null;
+    this.armPos = null;
+    this.timer.stop();
+  }
+  windowRemoved(window) {
+    if (this.lastWindow === window) {
+      this.lastWindow = null;
+    }
+    if (this.target === window) {
+      this.target = null;
+      this.armPos = null;
+    }
+  }
+  // A full-screen effect owns the pointer; its activations must not arm or
+  // fire a warp.
+  effectOpen() {
+    return config().mouseFollowsFocusIgnoreEffects.some(
+      (id) => this.workspace.isEffectActive(id)
+    );
+  }
+  reset() {
+    this.target = null;
+    this.armPos = null;
+    this.timer.stop();
+  }
+  motionAge() {
+    return this.lastMotion === 0 ? Infinity : Date.now() - this.lastMotion;
+  }
+  cursorMoved() {
+    return this.cursorMovedSince(this.armPos);
+  }
+  cursorMovedSince(p) {
+    const pos = this.workspace.cursorPos;
+    return p === null || pos.x !== p.x || pos.y !== p.y;
+  }
+  // KWin's own hit test, past shell overlays; a cursor in a gap is inside
+  // nothing.
+  cursorInside(window) {
+    const under = this.workspace.windowAt(this.workspace.cursorPos, hitTestDepth).find((w) => isMouseTargetable(w));
+    return under === window;
+  }
+  // Topmost targetable window of its layer on this desktop; a window KWin has
+  // not stacked yet was just mapped and goes on top.
+  isRaised(window) {
+    const order = this.workspace.stackingOrder;
+    if (!order.includes(window)) {
+      return true;
+    }
+    const desktop = this.workspace.currentDesktop;
+    for (let i = order.length - 1; i >= 0; i -= 1) {
+      const w = order[i];
+      if (!isMouseTargetable(w) || w.layer !== window.layer || w.minimized || w.hidden || (w.transient && w !== window) || (!w.onAllDesktops && !w.desktops.includes(desktop))) {
+        continue;
+      }
+      return w === window;
+    }
+    return false;
+  }
+  warp() {
+    if (this.effectOpen()) {
+      this.reset();
+      return;
+    }
+    const target = this.target;
+    const moved = this.cursorMoved();
+    this.target = null;
+    this.armPos = null;
+    let active = this.workspace.activeWindow;
+    if (active !== null && !isMouseTargetable(active)) {
+      return;
+    }
+    // A retile only earns a warp if it moved the window from under a still
+    // cursor.
+    if (target === null && this.cursorMovedSince(this.rebuildPos)) {
+      return;
+    }
+    if (target !== null && !moved && active !== target) {
+      this.workspace.activeWindow = target;
+      active = target;
+    }
+    if (active === null) {
+      return;
+    }
+    if (active.move || active.resize) {
+      return;
+    }
+    if (this.cursorInside(active)) {
+      return;
+    }
+    this.dbus.moveMouseToFocus().call();
+  }
+};
+// Layer-shell surfaces report a Normal window type, so specialWindow misses
+// them.
+function isMouseTargetable(window) {
+  return window !== null && window !== void 0 && !window.specialWindow && !window.popupWindow && !(window.skipTaskbar && !window.moveable);
+}
+function copyPos(p) {
+  return { x: p.x, y: p.y };
+}
 
 // src/controller/handlers/shortcuts.ts
 var ShortcutsHandler = class {
@@ -3249,6 +3451,7 @@ var Controller = class {
     this.windowHandlers = /* @__PURE__ */ new Map();
     this.previousDisplays = /* @__PURE__ */ new Map();
     this.dbusHandler = null;
+    this.mffHandler = null;
     this.workspace = qmlApi.workspace;
     this.qmlObjects = qmlObjects;
     this.eventTimer = this.qmlObjects.eventTimer;
@@ -3261,6 +3464,13 @@ var Controller = class {
     this.requestTimer = this.qmlObjects.requestTimer;
     this.requestTimer.interval = 500;
     this.requestTimer.triggered.connect(this.pollRequest.bind(this));
+    if (config().mouseFollowsFocus) {
+      this.mffHandler = new MouseFollowsFocusHandler(
+        this.workspace,
+        this.qmlObjects.mffTimer,
+        this.qmlObjects.dbus
+      );
+    }
     this.settingsHandler = new SettingsHandler(this.qmlObjects.settings);
     this.workspaceHandler = new WorkspaceHandler(this.workspace);
     this.shortcutsHandler = new ShortcutsHandler(
@@ -3404,6 +3614,9 @@ var Controller = class {
         }
       }
       let rebuilt = false;
+      if (rebuildDisplays.size > 0) {
+        this.mffHandler?.beforeRebuild();
+      }
       for (const [_, display] of rebuildDisplays) {
         if (display.desktop == void 0 || display.output == void 0) {
           continue;
@@ -3432,6 +3645,9 @@ var Controller = class {
           driver.buildLayout(rootTile, display);
           rebuilt = true;
         }
+      }
+      if (rebuildDisplays.size > 0) {
+        this.mffHandler?.retiled();
       }
       // Refresh the popup from its own display. Rebuilding several displays
       // used to end with the popup showing whichever one happened to be last.
@@ -4077,6 +4293,9 @@ var Controller = class {
   }
   getWindowHandler(window) {
     return this.windowHandlers.get(window);
+  }
+  mouseFollowsFocus() {
+    return this.mffHandler;
   }
   // sometimes the window can be destroyed before rebuild but the ref will still exist, so make sure it exists before calling stuff on it
   windowExists(window) {
