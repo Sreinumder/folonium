@@ -3,8 +3,8 @@
 ## In progress
 
 - [ ] Fix window drag in the overview effect (left drag = swap/move, right drag = clone, snap back on invalid drop)
-- [ ] Fix custom tiling engine runtime error ("Missing call to super()")
-- [ ] Complete custom tiling engine implementation
+- [ ] Verify custom tiling engine layout selection for all window counts
+- [ ] Polish custom engine shortcuts and config persistence
 
 ## Overview drag — test checklist (manual)
 
@@ -53,7 +53,9 @@ Shortcuts (IMPLEMENTED):
 
 Remaining work:
 
-- [ ] Fix runtime error "Missing call to super()" preventing engine use
+- [ ] Verify layout selection for all window counts (layoutIndex handling)
+- [ ] Verify rotated layout detection and shortcut
+- [ ] Reconcile saver customLayouts format with kwinrc CustomLayouts format
 - [ ] Test all shortcuts and config persistence
 - [ ] Verify layout/ratio parsing edge cases
 
