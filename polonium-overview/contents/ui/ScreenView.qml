@@ -509,6 +509,9 @@ FocusScope {
 
     // Resolve a released ghost: move, clone, swap, or snap back on failure.
     function finishDrag(tile) {
+        if (tile === null || root.dragTile !== tile) {
+            return;
+        }
         const w = tile.window;
         console.warn("FINISHDRAG", tile.dragButton, w.tile !== null, "dragGroup:", root.dragGroup !== null, "dragChip:", root.dragChip !== null);
         const g = root.dragGroup;
@@ -1127,9 +1130,6 @@ FocusScope {
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
             propagateComposedEvents: false
-            drag.target: root.dragTile
-            drag.axis: Drag.XAndYAxis
-            drag.smoothed: false
             onPressed: (mouse) => {
                 console.warn("PRESS", mouse.button);
                 win.dragButton = mouse.button;
@@ -1151,7 +1151,6 @@ FocusScope {
                     }
                     console.warn("BEGINDRAG");
                     win.dragged = true;
-                    dragArea.drag.active = true;
                     root.beginDrag(win, p, win.pressGrab);
                     return;
                 }
@@ -1165,7 +1164,6 @@ FocusScope {
                     root.dragPointer = win.mapToItem(root, mouse.x, mouse.y);
                     root.finishDrag(win);
                 }
-                dragArea.drag.active = false;
             }
             onClicked: (mouse) => {
                 if (win.dragged) {

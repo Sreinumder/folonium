@@ -2396,6 +2396,23 @@ var DBusHandler = class {
   constructor(dbusQml) {
     this.dbusQml = dbusQml;
     dbusQml.getSettings().finished.connect(this.getSettingsCallback.bind(this));
+    dbusQml.takeRequest().finished.connect(this.takeRequestCallback.bind(this));
+  }
+  // Ask the saver for the command the overview left behind, if any.
+  takeRequest() {
+    this.dbusQml.takeRequest().call();
+  }
+  takeRequestCallback([requestStr]) {
+    if (requestStr === void 0 || requestStr === "") return;
+    let request;
+    try {
+      request = JSON.parse(requestStr);
+    } catch (e) {
+      console().error(e);
+      return;
+    }
+    if (request === null || typeof request !== "object") return;
+    controller().handleRequest(request);
   }
   getSettings(display) {
     console().debug("getSettings called");
@@ -3241,6 +3258,9 @@ var Controller = class {
     if (config().useDBusSaver) {
       this.dbusHandler = new DBusHandler(this.qmlObjects.dbus);
     }
+    this.requestTimer = this.qmlObjects.requestTimer;
+    this.requestTimer.interval = 500;
+    this.requestTimer.triggered.connect(this.pollRequest.bind(this));
     this.settingsHandler = new SettingsHandler(this.qmlObjects.settings);
     this.workspaceHandler = new WorkspaceHandler(this.workspace);
     this.shortcutsHandler = new ShortcutsHandler(
@@ -3330,6 +3350,31 @@ var Controller = class {
   }
   rotateWindows(backwards) {
     this.shortcutsHandler.rotateWindows(backwards === true);
+  }
+  // The overview effect lives in the effect engine and cannot touch this
+  // script, so it round-trips its window commands through the saver.
+  pollRequest() {
+    this.dbusHandler?.takeRequest();
+  }
+  handleRequest(request) {
+    if (request.t === "swap") {
+      const windows = this.workspace.stackingOrder;
+      const a = windows.find((w) => String(w.internalId) === request.a);
+      const b = windows.find((w) => String(w.internalId) === request.b);
+      if (a === void 0 || b === void 0 || a === b) return;
+      // Different desktops: exchange the windows instead of the slots.
+      const aDesktop = a.desktops[0];
+      const bDesktop = b.desktops[0];
+      if (aDesktop === void 0 || bDesktop === void 0) return;
+      if (aDesktop !== bDesktop) {
+        a.desktops = [bDesktop];
+        b.desktops = [aDesktop];
+        return;
+      }
+      const tile = b.tile;
+      if (tile === null) return;
+      this.queueEvent({ t: "placeWindow", window: a, tile });
+    }
   }
   queueEvent(ev, forcePush = false) {
     if (this.processingEvents && !forcePush) return;
