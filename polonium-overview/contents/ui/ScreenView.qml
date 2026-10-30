@@ -279,7 +279,9 @@ FocusScope {
     // possible", so search for the biggest scale whose rows still fit.
     function packGroups(occupied) {
         const availW = root.screenW - 2 * root.outerPad;
-        const availH = root.screenH - 2 * root.outerPad - root.chipRowH - root.mediaSpace;
+        // Empty-desktop chips float above the grid instead of reserving a band
+        // at the top, so the desktops get the whole height.
+        const availH = root.screenH - 2 * root.outerPad - root.mediaSpace;
         // Desktop order, so desktop 1 is the first group at the top.
         const ordered = occupied.slice();
         let lo = 0.001;
@@ -332,7 +334,7 @@ FocusScope {
         const packed = root.packGroups(occupied);
         const rects = {};
         if (packed !== null && packed.s > 0) {
-            let y = root.outerPad + root.chipRowH + Math.max(0, (root.screenH - 2 * root.outerPad - root.chipRowH - root.mediaSpace - packed.h) / 2);
+            let y = root.outerPad + Math.max(0, (root.screenH - 2 * root.outerPad - root.mediaSpace - packed.h) / 2);
             for (const row of packed.rows) {
                 let x = (root.screenW - row.w) / 2;
                 for (const item of row.items) {
