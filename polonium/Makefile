@@ -51,9 +51,11 @@ src: polonium.mjs $(PKGDIR)
 	mv -f polonium.mjs $(PKGDIR)/contents/code/main.mjs
 	cp -f src/qml/* $(PKGDIR)/contents/ui/
 
-polonium.mjs: node_modules
-	npx esbuild --bundle src/index.ts --outfile=polonium.mjs --format=esm --platform=neutral
-	node transpile-spread.js polonium.mjs
+# src/index.ts is the recovered 2026-10-28 bundle from the
+# "Drag and KWin engine fixes" session. Keep it verbatim: rebuilding it from
+# the older per-module sources would replace it with the stale engine.
+polonium.mjs: src/index.ts
+	cp -f src/index.ts polonium.mjs
 
 node_modules:
 	npm ci

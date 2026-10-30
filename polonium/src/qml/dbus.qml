@@ -40,6 +40,18 @@ Item {
         method: "ResetSettings";
     }
 
+    function setGlobalSetting() {
+        return setGlobalSettingObj;
+    }
+    DBusCall {
+        id: setGlobalSettingObj;
+
+        service: "xyz.vaughanm.polonium";
+        path: "/saver";
+        dbusInterface: "xyz.vaughanm.polonium";
+        method: "SetGlobalSetting";
+    }
+
     // One pending command from the overview effect, polled by the script.
     function takeRequest() {
         return takeRequestObj;

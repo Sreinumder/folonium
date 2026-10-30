@@ -15,6 +15,18 @@ PlasmaCore.Dialog {
     property var engineSettings: ({});
     
     property rect screenGeometry;
+    // live facts about the layout the engine built right now; read-only
+    property int windowCount: -1;
+    property int variantCount: 1;
+    property string shapeText: "";
+    property int variantIndex: -1;
+    property bool customSelected: false;
+    property var customLayoutSets: [];
+    property string horizontalRatio: "";
+    property string verticalRatio: "";
+    property int horizontalRatioCount: 0;
+    property int verticalRatioCount: 0;
+    property bool kwinActive: false;
     x: (screenGeometry.x + screenGeometry.width / 2) - width / 2;
     y: (screenGeometry.y + screenGeometry.height / 2) - height / 2;
 
@@ -22,34 +34,39 @@ PlasmaCore.Dialog {
     flags: Qt.Popup | Qt.WindowStaysOnTopHint;
     location: PlasmaCore.Types.Floating;
     hideOnWindowDeactivate: true;
-    
-    function show(desktop, activity, output, engineType, engineSettings) {
+
+    // Only the Custom engine reports a window list it can count and reshape.
+    readonly property bool custom: engineType === 6 && windowCount >= 0;
+
+    function show(desktop, activity, output, engineType, engineSettings, windowCount, variantCount, shapeText, variantIndex, customSelected, customLayoutSets, ratioInfo) {
         this.desktop = desktop;
         this.activity = activity;
         this.output = output;
 
         this.engineType = engineType;
         this.engineSettings = engineSettings;
-                
+        this.windowCount = windowCount !== undefined ? windowCount : -1;
+        this.variantCount = variantCount !== undefined && variantCount > 0 ? variantCount : 1;
+        this.shapeText = shapeText !== undefined ? shapeText : "";
+        this.variantIndex = variantIndex !== undefined ? variantIndex : -1;
+        this.customSelected = customSelected === true;
+        this.customLayoutSets = customLayoutSets !== undefined ? customLayoutSets : [];
+        const ratios = ratioInfo !== undefined ? ratioInfo : {};
+        this.horizontalRatio = ratios.horizontal !== undefined ? ratios.horizontal : "";
+        this.verticalRatio = ratios.vertical !== undefined ? ratios.vertical : "";
+        this.horizontalRatioCount = ratios.horizontalCount !== undefined ? ratios.horizontalCount : 0;
+        this.verticalRatioCount = ratios.verticalCount !== undefined ? ratios.verticalCount : 0;
+        this.kwinActive = engineType === 5;
+
         // Update current screen information
         this.screenGeometry = Workspace.clientArea(KWin.MaximizeArea, output, desktop);
-        
+
         // Show the popup
         this.visible = true;
     }
-    
+
     function hide() {
         this.visible = false;
-    }
-
-    function saveEngineTypeFn() {
-        this.saveSettings(
-            this.desktop,
-            this.activity,
-            this.output,
-            this.engineType,
-            undefined,
-        );
     }
 
     function saveSettingsFn() {
@@ -65,108 +82,194 @@ PlasmaCore.Dialog {
     function hasProp(prop) {
         return this.engineSettings.hasOwnProperty(prop);
     }
-    
+
+    function selectedSetName() {
+        const tab = this.engineSettings.customLayoutTab ?? 0;
+        for (let i = 0; i < this.customLayoutSets.length; i++) {
+            if (this.customLayoutSets[i].index === tab) {
+                return this.customLayoutSets[i].name;
+            }
+        }
+        return "L1";
+    }
+
+    function selectedSetIndex() {
+        const tab = this.engineSettings.customLayoutTab ?? 0;
+        for (let i = 0; i < this.customLayoutSets.length; i++) {
+            if (this.customLayoutSets[i].index === tab) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    function layoutSummary() {
+        const name = this.selectedSetName();
+        const position = this.variantIndex >= 0 && this.variantCount > 1
+            ? " " + (this.variantIndex + 1) + "/" + this.variantCount
+            : "";
+        if (this.customSelected) {
+            return (this.shapeText || "-") + "   " + name + position;
+        }
+        return this.windowCount === 0
+            ? "-   " + name
+            : "-   " + name + " (no layout)";
+    }
+
     signal saveSettings(desktop: var, activity: var, output: var, engineType: int, engineSettings: var);
     signal resetSettings(desktop: var, activity: var, output: var);
+    // Read-only facts about the built layout, so the popup can show them.
+    signal cycleVariant(backwards: bool);
+    signal cycleHorizontalRatio(backwards: bool);
+    signal cycleVerticalRatio(backwards: bool);
+    signal rotateWindows(backwards: bool);
+    signal toggleKwinEngine();
+    signal selectCustomLayoutTab(desktop: var, activity: var, output: var, tabIndex: int);
 
-    // Helper: get layout text for a window count
-    function getLayoutText(count) {
-        return engineSettings["layout" + count] ?? "";
-    }
-    
-    // Helper: set layout text for a window count
-    function setLayoutText(count, text) {
-        engineSettings["layout" + count] = text;
-    }
-
-                
     mainItem: GridLayout {
         columns: 2;
+        // i feel like PlasmaCore.Dialog incorrectly implements this because theres no padding
         Layout.alignment: Qt.AlignHCenter;
         columnSpacing: 10;
         Layout.margins: 20;
-        Layout.preferredWidth: 600;
+        // change biggestLabel to be the id of whatever label is biggest
+        Layout.preferredWidth: biggestLabel.implicitWidth * 2;
 
-        // Engine Selection
         PC3.Label {
-            text: "Engine:";
+            visible: root.custom;
+            text: "Windows:";
+        }
+        PC3.Label {
+            visible: root.custom;
+            text: root.windowCount === 1 ? "1 window" : root.windowCount + " windows";
+            Layout.alignment: Qt.AlignLeft;
+        }
+
+        // The shape on screen, written in the layout DSL: [ ] splits into
+        // columns, / / into rows, and a number is that many stacked windows.
+        PC3.Label {
+            visible: root.custom;
+            text: "Layout:";
+        }
+        PC3.Label {
+            visible: root.custom;
+            text: root.layoutSummary();
+            Layout.alignment: Qt.AlignLeft;
+        }
+
+        PC3.Label {
+            visible: root.custom && root.customLayoutSets.length > 0;
+            text: "Layout Set:";
         }
         PC3.ComboBox {
-            model: ["Binary Tree", "Half", "Three Column", "Pillars", "Pager", "Custom"];
-            currentIndex: root.engineType;
-            popup.y: height;
-            onActivated: (idx) => {
-                root.engineType = idx;
-                root.saveEngineTypeFn();
-            }
-        }
-
-        // ========== CUSTOM ENGINE SECTION ==========
-        // Only visible when Custom engine is selected
-        PC3.Label {
-            visible: root.engineType === 6;
-            Layout.columnSpan: 2;
-            text: "<b>Custom Engine Configuration</b>";
-            font.pixelSize: 14;
-        }
-
-        // Ratios field (global for all window counts)
-        PC3.Label {
-            visible: root.engineType === 6;
-            text: "Ratios (global):";
-        }
-        PC3.TextArea {
-            visible: root.engineType === 6;
+            visible: root.custom && root.customLayoutSets.length > 0;
             Layout.fillWidth: true;
-            Layout.preferredHeight: 80;
-            text: root.engineSettings.ratiosJson ?? "";
-            placeholderText: "e.g. 2:1 3:2 1:1 2:3 1:2\n1:1:1 2:1:1 1:2:1 1:1:2\n1:1:1:1 2:1:1:1 1:2:1:1 1:1:2:1";
-            onTextChanged: {
-                root.engineSettings.ratiosJson = this.text;
-                root.saveSettingsFn();
+            model: root.customLayoutSets;
+            textRole: "name";
+            currentIndex: root.selectedSetIndex();
+            onActivated: (index) => {
+                root.selectCustomLayoutTab(
+                    root.desktop,
+                    root.activity,
+                    root.output,
+                    root.customLayoutSets[index].index
+                );
             }
         }
 
-        // Window count selector
         PC3.Label {
-            visible: root.engineType === 6;
-            text: "Window Count:";
+            visible: root.custom && root.variantCount > 1;
+            text: "Change Layout:";
         }
-        PC3.ComboBox {
-            id: windowCountCombo;
-            visible: root.engineType === 6;
-            Layout.fillWidth: true;
-            model: ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", "L10"];
-            currentIndex: 0;
-            onActivated: (idx) => {
-                // Force UI update
-                layoutTextArea.text = root.engineSettings["layout" + (idx + 1)] ?? "";
+        RowLayout {
+            visible: root.custom && root.variantCount > 1;
+            Layout.alignment: Qt.AlignLeft;
+            spacing: 4;
+            PC3.Button {
+                text: "Previous";
+                onClicked: root.cycleVariant(true);
+            }
+            PC3.Button {
+                text: "Next";
+                onClicked: root.cycleVariant(false);
             }
         }
 
-        // Layout text area for selected window count
         PC3.Label {
-            visible: root.engineType === 6;
-            Layout.columnSpan: 2;
-            text: "Layouts for selected window count (one per line):";
+            id: biggestLabel;
+            visible: root.custom && root.horizontalRatioCount > 0;
+            text: "Horizontal Ratio:";
         }
-        PC3.TextArea {
-            id: layoutTextArea;
-            visible: root.engineType === 6;
-            Layout.fillWidth: true;
-            Layout.fillHeight: true;
-            Layout.preferredHeight: 300;
-            Layout.columnSpan: 2;
-            text: root.engineSettings.layout1 ?? "";
-            placeholderText: "Enter layouts for this window count, one per line:\n[1 1] /1 1/ [1 2] [2 1]";
-            onTextChanged: {
-                const count = windowCountCombo.currentIndex + 1;
-                root.engineSettings["layout" + count] = this.text;
-                root.saveSettingsFn();
+        RowLayout {
+            visible: root.custom && root.horizontalRatioCount > 0;
+            Layout.alignment: Qt.AlignLeft;
+            spacing: 4;
+            PC3.Label {
+                text: root.horizontalRatio || "-";
+            }
+            PC3.Button {
+                visible: root.horizontalRatioCount > 1;
+                text: "Previous";
+                onClicked: root.cycleHorizontalRatio(true);
+            }
+            PC3.Button {
+                visible: root.horizontalRatioCount > 1;
+                text: "Next";
+                onClicked: root.cycleHorizontalRatio(false);
             }
         }
 
-        // ========== EXISTING ENGINE SETTINGS ==========
+        PC3.Label {
+            visible: root.custom && root.verticalRatioCount > 0;
+            text: "Vertical Ratio:";
+        }
+        RowLayout {
+            visible: root.custom && root.verticalRatioCount > 0;
+            Layout.alignment: Qt.AlignLeft;
+            spacing: 4;
+            PC3.Label {
+                text: root.verticalRatio || "-";
+            }
+            PC3.Button {
+                visible: root.verticalRatioCount > 1;
+                text: "Previous";
+                onClicked: root.cycleVerticalRatio(true);
+            }
+            PC3.Button {
+                visible: root.verticalRatioCount > 1;
+                text: "Next";
+                onClicked: root.cycleVerticalRatio(false);
+            }
+        }
+
+        PC3.Label {
+            visible: root.custom && root.windowCount >= 2;
+            text: "Rotate Windows:";
+        }
+        RowLayout {
+            visible: root.custom && root.windowCount >= 2;
+            Layout.alignment: Qt.AlignLeft;
+            spacing: 4;
+            PC3.Button {
+                text: "Previous";
+                onClicked: root.rotateWindows(true);
+            }
+            PC3.Button {
+                text: "Next";
+                onClicked: root.rotateWindows(false);
+            }
+        }
+
+        // Always available: when KWin is in charge this is the way back.
+        PC3.Label {
+            text: "KWin Engine:";
+        }
+        PC3.Button {
+            text: root.kwinActive ? "Back to Tiling" : "Switch to KWin";
+            Layout.alignment: Qt.AlignLeft;
+            onClicked: root.toggleKwinEngine();
+        }
+
         PC3.Label {
             visible: root.hasProp("rotateLayout");
             text: "Rotate Layout:";
@@ -181,141 +284,15 @@ PlasmaCore.Dialog {
         }
 
         PC3.Label {
-            visible: root.hasProp("swapInsertSide");
-            text: "Swap Insert Side:";
+            visible: root.hasProp("mirrorLayout");
+            // Mirrors the whole arrangement - windows and proportions together.
+            text: "Mirror Layout:";
         }
         PC3.CheckBox {
-            visible: root.hasProp("swapInsertSide");
-            checked: root.engineSettings.swapInsertSide ?? false;
+            visible: root.hasProp("mirrorLayout");
+            checked: root.engineSettings.mirrorLayout ?? false;
             onClicked: {
-                root.engineSettings.swapInsertSide = !root.engineSettings.swapInsertSide;
-                root.saveSettingsFn();
-            }
-        }
-
-        PC3.Label {
-            visible: root.hasProp("middleSplit");
-            text: "Middle Split:";
-        }
-        PC3.SpinBox {
-            visible: root.hasProp("middleSplit");
-            from: 15;
-            to: 85;
-            value: root.engineSettings.middleSplit * 100 ?? 50;
-            onValueModified: {
-                root.engineSettings.middleSplit = this.value / 100;
-                root.saveSettingsFn();
-            }
-        }
-        PC3.Label {
-            visible: root.hasProp("side1Size");
-            text: "Side 1 Size:";
-        }
-        PC3.SpinBox {
-            visible: root.hasProp("side1Size");
-            from: 15;
-            to: (0.85 - root.engineSettings.side2Size) * 100 ?? 70;
-            value: root.engineSettings.side1Size * 100 ?? 25;
-            onValueModified: {
-                root.engineSettings.side1Size = this.value / 100;
-                root.saveSettingsFn();
-            }
-        }
-        PC3.Label {
-            visible: root.hasProp("side2Size");
-            text: "Side 2 Size:";
-        }
-        PC3.SpinBox {
-            visible: root.hasProp("side2Size");
-            from: 15;
-            to: (0.85 - root.engineSettings.side1Size) * 100 ?? 70;
-            value: root.engineSettings.side2Size * 100 ?? 25;
-            onValueModified: {
-                root.engineSettings.side2Size = this.value / 100;
-                root.saveSettingsFn();
-            }
-        }
-
-        PC3.Label {
-            visible: root.hasProp("pillarCount");
-            text: "Pillars:";
-        }
-        PC3.SpinBox {
-            visible: root.hasProp("pillarCount");
-            from: 1;
-            to: 10;
-            value: root.engineSettings.pillarCount ?? 3;
-            onValueModified: {
-                root.engineSettings.pillarCount = this.value;
-                root.saveSettingsFn();
-            }
-        }
-
-        PC3.Label {
-            visible: root.hasProp("pageWidth");
-            text: "Page Width:";
-        }
-        PC3.SpinBox {
-            visible: root.hasProp("pageWidth");
-            from: 15;
-            to: 20;
-            value: root.engineSettings.pageWidth * 100 ?? 15;
-            onValueModified: {
-                root.engineSettings.pageWidth = this.value / 100;
-                root.saveSettingsFn();
-            }
-        }
-
-        PC3.Label {
-            visible: root.hasProp("insertionStyle");
-            text: "Insertion Style:";
-        }
-        // btree insertion style
-        PC3.ComboBox {
-            visible: root.hasProp("insertionStyle") && root.engineType === 0;
-            model: ["Shallow", "Dwindle", "Spiral"];
-            currentIndex: root.engineSettings.insertionStyle ?? 0;
-            popup.y: height;
-            onActivated: (idx) => {
-                root.engineSettings.insertionStyle = idx;
-                root.saveSettingsFn();
-            }
-        }
-        // pillars insertion style
-        PC3.ComboBox {
-            visible: root.hasProp("insertionStyle") && root.engineType === 3;
-            model: ["Rows", "Snake", "Rows Up", "Snake Up"];
-            currentIndex: root.engineSettings.insertionStyle ?? 0;
-            popup.y: height;
-            onActivated: (idx) => {
-                root.engineSettings.insertionStyle = idx;
-                root.saveSettingsFn();
-            }
-        }
-
-        PC3.Label {
-            visible: root.hasProp("keepMaster");
-            text: "Keep Master:";
-        }
-        PC3.CheckBox {
-            visible: root.hasProp("keepMaster");
-            checked: root.engineSettings.keepMaster ?? false;
-            onClicked: {
-                root.engineSettings.keepMaster = !root.engineSettings.keepMaster;
-                root.saveSettingsFn();
-            }
-        }
-
-        PC3.Label {
-            id: biggestLabel;
-            visible: root.hasProp("insertInActive");
-            text: "Insert in Active Tile:";
-        }
-        PC3.CheckBox {
-            visible: root.hasProp("insertInActive");
-            checked: root.engineSettings.insertInActive ?? false;
-            onClicked: {
-                root.engineSettings.insertInActive = !root.engineSettings.insertInActive;
+                root.engineSettings.mirrorLayout = !root.engineSettings.mirrorLayout;
                 root.saveSettingsFn();
             }
         }
