@@ -41,8 +41,9 @@ FocusScope {
     // (move/clone/swap) or animates back to where the window is tiled.
     property Item dragTile: null
     property QtObject dragWindow: null
-    property Item dragGroup: null
-    property Item dragChip: null
+    // Plain objects from root.groups / root.emptyDesktops, not Items.
+    property var dragGroup: null
+    property var dragChip: null
     property bool dragActive: false
     property bool dragReturning: false
     property int dragButton: Qt.NoButton
@@ -78,6 +79,8 @@ FocusScope {
     property bool ready: false
     property real openProgress: ready && effect.activated ? 1 : 0
     Component.onCompleted: Qt.callLater(() => {
+        console.warn("OVMARK loaded");
+        console.warn("GROUPS", root.groups.filter(x => x.occupied).map(x => [x.index, x.x, x.y, x.w, x.h, x.desktop && x.desktop.x11DesktopNumber].join(",")).join(" | "));
         root.ready = true;
         root.rebuildGroups();
         // Rapidly cycle through all desktops to ensure they're tiled, then return.
@@ -430,13 +433,13 @@ FocusScope {
         for (let i = 0; i < tiles.count; i++) {
             const item = tiles.itemAt(i);
             if (item) {
-                item.dropHover = item === g;
+                item.dropHover = item.group === g;
             }
         }
         for (let i = 0; i < chipRepeater.count; i++) {
             const item = chipRepeater.itemAt(i);
             if (item) {
-                item.dropHover = item === c;
+                item.dropHover = item.modelData === c;
             }
         }
     }
@@ -494,9 +497,20 @@ FocusScope {
         w.desktops = list;
     }
 
+    function tileForGroup(g) {
+        for (let i = 0; i < tiles.count; i++) {
+            const item = tiles.itemAt(i);
+            if (item && item.group === g) {
+                return item;
+            }
+        }
+        return null;
+    }
+
     // Resolve a released ghost: move, clone, swap, or snap back on failure.
     function finishDrag(tile) {
         const w = tile.window;
+        console.warn("FINISHDRAG", tile.dragButton, w.tile !== null, "dragGroup:", root.dragGroup !== null, "dragChip:", root.dragChip !== null);
         const g = root.dragGroup;
         const c = root.dragChip;
         const target = g !== null ? g.desktop : (c !== null ? c.desktop : null);
@@ -516,17 +530,26 @@ FocusScope {
             }
             return;
         }
-        // Same desktop drop
-        if (g !== null && g.desktop === tile.tile.desktop) {
+        // Same desktop drop - compare by x11DesktopNumber since QtObjects may differ
+        function sameDesktop(d1, d2) {
+            return d1 && d2 && d1.x11DesktopNumber === d2.x11DesktopNumber;
+        }
+        console.warn("FINISHDRAG same desktop?", g !== null, sameDesktop(g.desktop, tile.tile.desktop), "g.desktop:", g && g.desktop && g.desktop.x11DesktopNumber, "tile.desktop:", tile.tile.desktop && tile.tile.desktop.x11DesktopNumber);
+        if (g !== null && sameDesktop(g.desktop, tile.tile.desktop)) {
             if (floating) {
                 // Floating window on same desktop: just move it
                 root.moveFloating(tile, dx, dy);
                 root.clearDrag();
             } else if (tile.dragButton === Qt.LeftButton && !tile.tile.monoLayout) {
                 // Tiled window: swap with window under cursor
-                const p = g.mapFromItem(root, root.dragPointer.x, root.dragPointer.y);
-                const under = g.windowAt(p.x, p.y, tile);
+                console.warn("FINISHDRAG attempting swap");
+                const groupTile = root.tileForGroup(g);
+                console.warn("FINISHDRAG groupTile:", groupTile !== null);
+                const under = groupTile === null ? null
+                    : groupTile.windowAt(root.dragPointer.x - g.x, root.dragPointer.y - g.y, tile);
+                console.warn("FINISHDRAG under:", under !== null, under && under !== tile);
                 if (under !== null && under !== tile) {
+                    console.warn("FINISHDRAG calling requestSwap");
                     root.requestSwap(w, under.window);
                 }
                 // Swap is instant; just clear drag (ghost vanishes)
@@ -537,6 +560,7 @@ FocusScope {
             }
             return;
         }
+        console.warn("FINISHDRAG different desktop, target:", target);
         // Different desktop / empty chip
         if (tile.dragButton === Qt.RightButton) {
             // Right drag clones: window appears on extra desktop
@@ -1102,7 +1126,12 @@ FocusScope {
             anchors.fill: parent
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+            propagateComposedEvents: false
+            drag.target: root.dragTile
+            drag.axis: Drag.XAndYAxis
+            drag.smoothed: false
             onPressed: (mouse) => {
+                console.warn("PRESS", mouse.button);
                 win.dragButton = mouse.button;
                 win.dragged = false;
                 const p = win.mapToItem(root, mouse.x, mouse.y);
@@ -1116,11 +1145,13 @@ FocusScope {
                     return;
                 }
                 const p = win.mapToItem(root, mouse.x, mouse.y);
-                if (!root.dragActive) {
+                if (!root.dragActive && !win.dragged) {
                     if (Math.abs(p.x - win.pressPointer.x) < 5 && Math.abs(p.y - win.pressPointer.y) < 5) {
                         return;
                     }
+                    console.warn("BEGINDRAG");
                     win.dragged = true;
+                    dragArea.drag.active = true;
                     root.beginDrag(win, p, win.pressGrab);
                     return;
                 }
@@ -1130,14 +1161,15 @@ FocusScope {
                 }
             }
             onReleased: (mouse) => {
-                if (root.dragTile !== win) {
-                    return;
+                if (root.dragTile === win) {
+                    root.dragPointer = win.mapToItem(root, mouse.x, mouse.y);
+                    root.finishDrag(win);
                 }
-                root.dragPointer = win.mapToItem(root, mouse.x, mouse.y);
-                root.finishDrag(win);
+                dragArea.drag.active = false;
             }
             onClicked: (mouse) => {
                 if (win.dragged) {
+                    mouse.accepted = true;
                     return;
                 }
                 if (mouse.button === Qt.LeftButton) {
@@ -1399,7 +1431,21 @@ FocusScope {
         onPositionChanged: (mouse) => {
             root.mouseX = mouse.x;
             root.mouseY = mouse.y;
+            if (root.dragActive && root.dragTile) {
+                root.dragPointer = mouse;
+                root.updateDropTarget();
+            }
         }
+        onReleased: (mouse) => {
+            if (root.dragActive && root.dragTile) {
+                root.dragPointer = mouse;
+                root.finishDrag(root.dragTile);
+            }
+        }
+    }
+
+    // Full-screen drag tracker: only active during drag, high z to capture all events
+    MouseArea {
     }
 
     // Tooltip removed: window title + icon shown on hover in the tile itself
