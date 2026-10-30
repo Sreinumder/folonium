@@ -205,8 +205,19 @@ export class CustomEngine implements TilingEngineInterface {
         return this.settings.getProps();
     }
     setEngineSettings(settings: object): void {
-        console().warn("CustomEngine.setEngineSettings CALLED - THROWING");
-        throw new Error("setEngineSettings called");
+        console().warn("CustomEngine.setEngineSettings called with action:", (settings as any)._customAction);
+        // Handle custom actions
+        if (settings && (settings as any)._customAction) {
+            const action = (settings as any)._customAction;
+            if (action === "rotateLayout") this.rotateLayout();
+            else if (action === "mirrorLayout") this.mirrorLayout();
+            else if (action === "cycleHorizontalRatio") this.cycleHorizontalRatio();
+            else if (action === "cycleVerticalRatio") this.cycleVerticalRatio();
+            else if (action === "cycleLayout") this.cycleLayout();
+            else if (action === "cycleWindowOrder") this.cycleWindowOrder();
+            // Remove the action before passing to settings
+            delete (settings as any)._customAction;
+        }
         this.settings.setProps(settings);
     }
 

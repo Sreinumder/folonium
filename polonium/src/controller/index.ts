@@ -526,6 +526,7 @@ class Controller {
         engineSettings: object | undefined,
         noDBusUpdate: boolean | undefined,
     ): Display[] {
+        console().error("evChangeEngine: engineType:", engineType, "engineSettings:", engineSettings);
         console().log(
             "changing engine type/settings for display",
             display.toString(),

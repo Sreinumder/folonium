@@ -183,7 +183,10 @@ function eventsAreSame(ev1: GenericEvent, ev2: GenericEvent): boolean {
     for (const prop in ev1) {
         // display is the only parameter in the above events that should be matched based on value not reference
         if (prop === "display") {
-            if (ev1.display?.equals(ev2.display)) {
+            if (ev1.display && typeof ev1.display.equals === "function" && ev1.display.equals(ev2.display)) {
+                continue;
+            }
+            if (ev1.display === ev2.display) {
                 continue;
             }
             return false;

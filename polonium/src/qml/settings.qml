@@ -71,12 +71,12 @@ PlasmaCore.Dialog {
 
     // Helper: get layout text for a window count
     function getLayoutText(count) {
-        return engineSettings["CustomLayout" + count] ?? "";
+        return engineSettings["layout" + count] ?? "";
     }
     
     // Helper: set layout text for a window count
     function setLayoutText(count, text) {
-        engineSettings["CustomLayout" + count] = text;
+        engineSettings["layout" + count] = text;
     }
 
                 
@@ -119,10 +119,10 @@ PlasmaCore.Dialog {
             visible: root.engineType === 6;
             Layout.fillWidth: true;
             Layout.preferredHeight: 80;
-            text: root.engineSettings.CustomRatios ?? "";
+            text: root.engineSettings.ratiosJson ?? "";
             placeholderText: "e.g. 2:1 3:2 1:1 2:3 1:2\n1:1:1 2:1:1 1:2:1 1:1:2\n1:1:1:1 2:1:1:1 1:2:1:1 1:1:2:1";
             onTextChanged: {
-                root.engineSettings.CustomRatios = this.text;
+                root.engineSettings.ratiosJson = this.text;
                 root.saveSettingsFn();
             }
         }
@@ -140,7 +140,7 @@ PlasmaCore.Dialog {
             currentIndex: 0;
             onActivated: (idx) => {
                 // Force UI update
-                layoutTextArea.text = root.engineSettings["CustomLayout" + (idx + 1)] ?? "";
+                layoutTextArea.text = root.engineSettings["layout" + (idx + 1)] ?? "";
             }
         }
 
@@ -157,11 +157,11 @@ PlasmaCore.Dialog {
             Layout.fillHeight: true;
             Layout.preferredHeight: 300;
             Layout.columnSpan: 2;
-            text: root.engineSettings.CustomLayout1 ?? "";
+            text: root.engineSettings.layout1 ?? "";
             placeholderText: "Enter layouts for this window count, one per line:\n[1 1] /1 1/ [1 2] [2 1]";
             onTextChanged: {
                 const count = windowCountCombo.currentIndex + 1;
-                root.engineSettings["CustomLayout" + count] = this.text;
+                root.engineSettings["layout" + count] = this.text;
                 root.saveSettingsFn();
             }
         }

@@ -49,6 +49,17 @@ Item {
         id: shortcutsLoader;
                 
         source: "shortcuts.qml";
+        asynchronous: false;
+        onStatusChanged: {
+            if (status === Loader.Ready) {
+                console.error("Shortcuts QML loaded successfully");
+            } else if (status === Loader.Error) {
+                console.error("Shortcuts QML failed to load:", errorString);
+            }
+        }
+        Component.onCompleted: {
+            console.error("Shortcuts Loader completed, status:", status);
+        }
     }
 
     Loader {

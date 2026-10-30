@@ -6,6 +6,10 @@ import org.kde.kwin;
 Item {
     id: shortcuts;
     
+    Component.onCompleted: {
+        console.error("Shortcuts QML loaded");
+    }
+    
     function toggleActiveTiling() {
         return toggleActiveTilingObj;
     }

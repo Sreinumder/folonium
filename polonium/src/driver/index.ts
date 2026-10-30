@@ -48,6 +48,7 @@ export class Driver {
         engineType?: TilingEngineType,
         engineSettings?: object,
     ): void {
+        console().warn("Driver.changeTilingEngine: engineType:", engineType, "engineSettings:", engineSettings);
         if (
             engineType !== undefined &&
             this.tilingEngine.engineType != engineType
