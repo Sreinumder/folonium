@@ -1,0 +1,1254 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>KWin::PoloniumConfigForm</class>
+ <widget class="QWidget" name="KWin::PoloniumConfigForm">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>603</width>
+    <height>489</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Polonium</string>
+  </property>
+  <layout class="QGridLayout" name="gridLayout">
+   <item row="0" column="1">
+    <widget class="QLabel" name="label">
+     <property name="text">
+      <string>Changes only apply after logging out or restarting KWin!</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignmentFlag::AlignCenter</set>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="1">
+    <widget class="QLabel" name="label_2">
+     <property name="text">
+      <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;https://polonium.vaughanm.xyz/configuration&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#f6b0e8;&quot;&gt;Manual - https://polonium.vaughanm.xyz/configuration (Right click to copy link)&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignmentFlag::AlignCenter</set>
+     </property>
+    </widget>
+   </item>
+   <item row="3" column="1">
+    <layout class="QVBoxLayout" name="verticalLayout">
+     <item>
+      <widget class="QTabWidget" name="tabWidget">
+       <property name="currentIndex">
+        <number>0</number>
+       </property>
+       <widget class="QWidget" name="General">
+        <attribute name="title">
+         <string>General</string>
+        </attribute>
+        <layout class="QGridLayout" name="gridLayout_10">
+         <item row="5" column="2" colspan="2">
+          <spacer name="generalSpacer">
+           <property name="orientation">
+            <enum>Qt::Orientation::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item row="2" column="3">
+          <widget class="QCheckBox" name="kcfg_UseDBusSaver">
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="2">
+          <widget class="QLabel" name="rebuildDelayLabel">
+           <property name="text">
+            <string>Rebuild Delay</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="3">
+          <widget class="QComboBox" name="kcfg_LogLevel">
+           <property name="currentIndex">
+            <number>1</number>
+           </property>
+           <item>
+            <property name="text">
+             <string>Error</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Warn</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Log</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Debug</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="2" column="2">
+          <widget class="QLabel" name="useDBusSaver">
+           <property name="text">
+            <string>Use DBus Saver</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="3">
+          <widget class="QSpinBox" name="kcfg_RebuildDelay">
+           <property name="suffix">
+            <string>ms</string>
+           </property>
+           <property name="minimum">
+            <number>1</number>
+           </property>
+           <property name="maximum">
+            <number>1000</number>
+           </property>
+           <property name="value">
+            <number>10</number>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="3">
+          <widget class="QSpinBox" name="kcfg_TileResizeAmount">
+           <property name="suffix">
+            <string>px</string>
+           </property>
+           <property name="minimum">
+            <number>1</number>
+           </property>
+           <property name="maximum">
+            <number>1000</number>
+           </property>
+           <property name="value">
+            <number>10</number>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="2">
+          <widget class="QLabel" name="logLevelLabel">
+           <property name="text">
+            <string>Log Level</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="2">
+          <widget class="QLabel" name="tileResizeAmountLabel">
+           <property name="text">
+            <string>Tile Resize Amount</string>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="2" colspan="2">
+          <widget class="QLabel" name="debugTitle">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="text">
+            <string>Debug</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="Engine">
+        <attribute name="title">
+         <string>Engine</string>
+        </attribute>
+        <layout class="QGridLayout" name="gridLayout_4">
+         <item row="1" column="1">
+          <widget class="QComboBox" name="kcfg_DefaultEngine">
+           <item>
+            <property name="text">
+             <string>Binary Tree</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Half</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Three Column</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Pillars</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Pager</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>KWin</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="defaultEngineLabel">
+           <property name="text">
+            <string>Default Engine</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="0" colspan="2">
+          <widget class="QTabWidget" name="engineSettingsTab">
+           <property name="currentIndex">
+            <number>0</number>
+           </property>
+           <widget class="QWidget" name="btreeTab">
+            <attribute name="title">
+             <string>Binary Tree</string>
+            </attribute>
+            <layout class="QGridLayout" name="gridLayout_3">
+             <item row="0" column="0">
+              <widget class="QLabel" name="btreeSwapInsertSideLabel">
+               <property name="text">
+                <string>Swap Insert Side</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QCheckBox" name="kcfg_BTreeRotateLayout">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="1">
+              <widget class="QComboBox" name="kcfg_BTreeInsertionStyle">
+               <property name="currentIndex">
+                <number>0</number>
+               </property>
+               <item>
+                <property name="text">
+                 <string>Shallow</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Dwindle</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Spiral</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+             <item row="2" column="0">
+              <widget class="QLabel" name="btreeInsertionStyleLabel">
+               <property name="text">
+                <string>Insertion Style</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="btreeRotateLayoutLabel">
+               <property name="text">
+                <string>Rotate Layout</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QCheckBox" name="kcfg_BTreeSwapInsertSide">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="0">
+              <widget class="QLabel" name="insertInActiveLabel">
+               <property name="text">
+                <string>Insert New Windows in Active Tile</string>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="1">
+              <widget class="QCheckBox" name="kcfg_BTreeInsertInActive">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="0" colspan="2">
+              <spacer name="btreeVerticalSpacer">
+               <property name="orientation">
+                <enum>Qt::Orientation::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>40</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="halfTab">
+            <attribute name="title">
+             <string>Half</string>
+            </attribute>
+            <layout class="QGridLayout" name="gridLayout_2">
+             <item row="3" column="1">
+              <widget class="QCheckBox" name="kcfg_HalfInsertInActive">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QCheckBox" name="kcfg_HalfSwapInsertSide">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="1">
+              <widget class="QCheckBox" name="kcfg_HalfRotateLayout">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item row="5" column="0" colspan="2">
+              <spacer name="halfTabVerticalSpacer">
+               <property name="orientation">
+                <enum>Qt::Orientation::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>40</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+             <item row="2" column="0">
+              <widget class="QLabel" name="halfRotateLayoutLabel">
+               <property name="text">
+                <string>Rotate Layout</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="halfMiddleSplitLabel">
+               <property name="text">
+                <string>Middle Split</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="0">
+              <widget class="QLabel" name="halfSwapInsertSideLabel">
+               <property name="text">
+                <string>Swap Insert Side</string>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="0">
+              <widget class="QLabel" name="insertInActiveLabel_2">
+               <property name="text">
+                <string>Insert New Windows in Active Tile</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QDoubleSpinBox" name="kcfg_HalfMiddleSplit">
+               <property name="minimum">
+                <double>0.150000000000000</double>
+               </property>
+               <property name="maximum">
+                <double>0.850000000000000</double>
+               </property>
+               <property name="singleStep">
+                <double>0.050000000000000</double>
+               </property>
+               <property name="value">
+                <double>0.500000000000000</double>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="0">
+              <widget class="QLabel" name="halfKeepMasterLabel">
+               <property name="text">
+                <string>Keep Master</string>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="1">
+              <widget class="QCheckBox" name="kcfg_HalfKeepMaster">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="threeColumnTab">
+            <attribute name="title">
+             <string>Three Column</string>
+            </attribute>
+            <layout class="QGridLayout" name="gridLayout_8">
+             <item row="3" column="0">
+              <widget class="QLabel" name="threeColumnSide1SizeLabel">
+               <property name="text">
+                <string>Side 1 Size</string>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="1">
+              <widget class="QCheckBox" name="kcfg_ThreeColumnSwapInsertSide">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item row="5" column="1">
+              <widget class="QCheckBox" name="kcfg_ThreeColumnRotateLayout">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="1">
+              <widget class="QDoubleSpinBox" name="kcfg_ThreeColumnSide1Size">
+               <property name="minimum">
+                <double>0.150000000000000</double>
+               </property>
+               <property name="maximum">
+                <double>0.700000000000000</double>
+               </property>
+               <property name="singleStep">
+                <double>0.050000000000000</double>
+               </property>
+               <property name="value">
+                <double>0.250000000000000</double>
+               </property>
+              </widget>
+             </item>
+             <item row="5" column="0">
+              <widget class="QLabel" name="threeColumnRotateLayoutLabel">
+               <property name="text">
+                <string>Rotate Layout</string>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="0">
+              <widget class="QLabel" name="threeColumnSwapInsertSideLabel">
+               <property name="text">
+                <string>Swap Insert Side</string>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="1">
+              <widget class="QDoubleSpinBox" name="kcfg_ThreeColumnSide2Size">
+               <property name="minimum">
+                <double>0.150000000000000</double>
+               </property>
+               <property name="maximum">
+                <double>0.700000000000000</double>
+               </property>
+               <property name="singleStep">
+                <double>0.050000000000000</double>
+               </property>
+               <property name="value">
+                <double>0.250000000000000</double>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0" colspan="2">
+              <widget class="QLabel" name="threeColumnWarning">
+               <property name="text">
+                <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:8pt;&quot;&gt;Warning - Side 1 + Side 2 cannot exceed 0.85!&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignmentFlag::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="0">
+              <widget class="QLabel" name="threeColumnSide2SizeLabel">
+               <property name="text">
+                <string>Side 2 Size</string>
+               </property>
+              </widget>
+             </item>
+             <item row="6" column="0" colspan="2">
+              <spacer name="threeColumnVerticalSpacer">
+               <property name="orientation">
+                <enum>Qt::Orientation::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>40</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="pillarsTab">
+            <attribute name="title">
+             <string>Pillars</string>
+            </attribute>
+            <layout class="QGridLayout" name="gridLayout_6">
+             <item row="1" column="1">
+              <widget class="QCheckBox" name="kcfg_PillarsSwapInsertSide">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="0">
+              <widget class="QLabel" name="pillarsInsertionStyleLabel">
+               <property name="text">
+                <string>Insertion Style</string>
+               </property>
+              </widget>
+             </item>
+             <item row="5" column="0">
+              <widget class="QLabel" name="pillarsInsertInActiveLabel">
+               <property name="text">
+                <string>Insert New Windows in Active Tile</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="0">
+              <widget class="QLabel" name="pillarsPillarCountLabel">
+               <property name="text">
+                <string>Pillar Count</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="pillarsSwapInsertSideLabel">
+               <property name="text">
+                <string>Swap Insert Side</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QSpinBox" name="kcfg_PillarsPillarCount">
+               <property name="minimum">
+                <number>1</number>
+               </property>
+               <property name="maximum">
+                <number>6</number>
+               </property>
+               <property name="value">
+                <number>3</number>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="0">
+              <widget class="QLabel" name="pillarsRotateLayoutLabel">
+               <property name="text">
+                <string>Rotate Layout</string>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="1">
+              <widget class="QCheckBox" name="kcfg_PillarsRotateLayout">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item row="5" column="1">
+              <widget class="QCheckBox" name="kcfg_PillarsInsertInActive">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="1">
+              <widget class="QComboBox" name="kcfg_PillarsInsertionStyle">
+               <item>
+                <property name="text">
+                 <string>Rows</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Snake</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Rows Up</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Snake Up</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+             <item row="6" column="0" colspan="2">
+              <spacer name="pillarsVerticalSpacer">
+               <property name="orientation">
+                <enum>Qt::Orientation::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>40</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="pagerTab">
+            <attribute name="title">
+             <string>Pager</string>
+            </attribute>
+            <layout class="QGridLayout" name="gridLayout_9">
+             <item row="1" column="0">
+              <widget class="QLabel" name="pagerSwapInserSideLabel">
+               <property name="text">
+                <string>Swap Insert Side</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QCheckBox" name="kcfg_PagerSwapInsertSide">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="0">
+              <widget class="QLabel" name="pagerPageWidthLabel">
+               <property name="text">
+                <string>Page Width</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QDoubleSpinBox" name="kcfg_PagerPageWidth">
+               <property name="minimum">
+                <double>0.150000000000000</double>
+               </property>
+               <property name="maximum">
+                <double>0.200000000000000</double>
+               </property>
+               <property name="singleStep">
+                <double>0.010000000000000</double>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="0">
+              <widget class="QLabel" name="pagerRotateLayoutLabel">
+               <property name="text">
+                <string>Rotate Layout</string>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="1">
+              <widget class="QCheckBox" name="kcfg_PagerRotateLayout">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="0" colspan="2">
+              <spacer name="pagerVerticalSpacer">
+               <property name="orientation">
+                <enum>Qt::Orientation::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>40</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="kwinTab">
+            <attribute name="title">
+             <string>KWin</string>
+            </attribute>
+            <layout class="QGridLayout" name="gridLayout_7">
+             <item row="0" column="0">
+              <widget class="QLabel" name="kwinInfoLabel">
+               <property name="text">
+                <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;KWin serves as a default untiled engine.&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Tiles can be edited using the KWin tile editor.&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;No settings are available for this engine.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignmentFlag::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <spacer name="kwinVerticalSpacer">
+               <property name="orientation">
+                <enum>Qt::Orientation::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>208</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
+           </widget>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="Windows">
+        <attribute name="title">
+         <string>Windows</string>
+        </attribute>
+        <layout class="QGridLayout" name="gridLayout_5">
+         <item row="2" column="1">
+          <widget class="QCheckBox" name="kcfg_TiledWindowsBelow">
+           <property name="text">
+            <string/>
+           </property>
+           <property name="checked">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="1">
+          <widget class="QComboBox" name="kcfg_DragRetilePoint">
+           <item>
+            <property name="text">
+             <string>Mouse Cursor</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Window Center</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Window Topbar</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="3" column="0">
+          <widget class="QLabel" name="windowDragPolicyLabel">
+           <property name="text">
+            <string>Window Dragging Policy</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="0">
+          <widget class="QLabel" name="tileGapLabel">
+           <property name="text">
+            <string>Gap Between Tiles</string>
+           </property>
+           <property name="toolTip">
+            <string>Space between tiled windows, and between tiles and the screen edges.</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QSpinBox" name="kcfg_TileGap">
+           <property name="toolTip">
+            <string>Space between tiled windows, and between tiles and the screen edges.</string>
+           </property>
+           <property name="suffix">
+            <string>px</string>
+           </property>
+           <property name="minimum">
+            <number>0</number>
+           </property>
+           <property name="maximum">
+            <number>100</number>
+           </property>
+           <property name="value">
+            <number>4</number>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QComboBox" name="kcfg_Borders">
+           <property name="minimumSize">
+            <size>
+             <width>200</width>
+             <height>32</height>
+            </size>
+           </property>
+           <property name="currentIndex">
+            <number>4</number>
+           </property>
+           <item>
+            <property name="text">
+             <string>No Borders</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Border Floating Only</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Border Active Only</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Border Floating/Active</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Border All</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="5" column="0">
+          <widget class="QLabel" name="mouseFollowsFocusLabel">
+           <property name="text">
+            <string>Mouse Follows Focus</string>
+           </property>
+          </widget>
+         </item>
+         <item row="5" column="1">
+          <widget class="QCheckBox" name="kcfg_MouseFollowsFocus">
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+         <item row="6" column="0">
+          <widget class="QLabel" name="mouseFollowsFocusIgnoreEffectsLabel">
+           <property name="text">
+            <string>Pause During Effects</string>
+           </property>
+           <property name="toolTip">
+            <string>Comma-separated KWin effect ids. While one of them is running, Mouse Follows Focus neither warps nor re-activates windows. Example: betteroverview, overview, cube</string>
+           </property>
+          </widget>
+         </item>
+         <item row="6" column="1">
+          <widget class="QLineEdit" name="kcfg_MouseFollowsFocusIgnoreEffects">
+           <property name="toolTip">
+            <string>Comma-separated KWin effect ids. While one of them is running, Mouse Follows Focus neither warps nor re-activates windows. Example: betteroverview, overview, cube</string>
+           </property>
+          </widget>
+         </item>
+          <item row="7" column="0" colspan="2">
+           <widget class="QLabel" name="ultrawideTitle">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>Single Window Sizing</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignmentFlag::AlignCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item row="8" column="0">
+           <widget class="QLabel" name="ultrawideEnableLabel">
+            <property name="text">
+             <string>Custom Sizing for Single Window</string>
+            </property>
+            <property name="toolTip">
+             <string>Use the configured width and position when an output has exactly one tiled window.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="8" column="1">
+           <widget class="QCheckBox" name="kcfg_UltrawideSingleWindow">
+            <property name="text">
+             <string/>
+            </property>
+            <property name="toolTip">
+             <string>Use the configured width and position when an output has exactly one tiled window.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="9" column="0">
+           <widget class="QLabel" name="ultrawideOnlyLabel">
+            <property name="text">
+             <string>Only on Ultrawide Screens</string>
+            </property>
+            <property name="toolTip">
+             <string>Apply custom single-window sizing only to screens with an aspect ratio of at least 2:1. Disable this to use it on any screen.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="9" column="1">
+           <widget class="QCheckBox" name="kcfg_UltrawideOnly">
+            <property name="text">
+             <string/>
+            </property>
+            <property name="toolTip">
+             <string>Apply custom single-window sizing only to screens with an aspect ratio of at least 2:1. Disable this to use it on any screen.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="10" column="0">
+           <widget class="QLabel" name="ultrawideWidthLabel">
+            <property name="text">
+             <string>Single Window Width</string>
+            </property>
+            <property name="toolTip">
+             <string>Width of the single window as a fraction of the screen width (0.60 means 60%).</string>
+            </property>
+           </widget>
+          </item>
+          <item row="10" column="1">
+           <widget class="QDoubleSpinBox" name="kcfg_UltrawideSingleWindowWidth">
+            <property name="toolTip">
+             <string>Width of the single window as a fraction of the screen width (0.60 means 60%).</string>
+            </property>
+            <property name="minimum">
+             <double>0.100000000000000</double>
+            </property>
+            <property name="maximum">
+             <double>0.900000000000000</double>
+            </property>
+            <property name="singleStep">
+             <double>0.050000000000000</double>
+            </property>
+            <property name="value">
+             <double>0.600000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="11" column="0">
+           <widget class="QLabel" name="ultrawidePositionLabel">
+            <property name="text">
+             <string>Single Window Position</string>
+            </property>
+            <property name="toolTip">
+             <string>Position of the single window when custom sizing is active (Center, Left, or Right).</string>
+            </property>
+           </widget>
+          </item>
+          <item row="11" column="1">
+           <widget class="QComboBox" name="kcfg_UltrawideSingleWindowPosition">
+            <property name="toolTip">
+             <string>Position of the single window when custom sizing is active (Center, Left, or Right).</string>
+            </property>
+            <item>
+             <property name="text">
+              <string>Center</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Left</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Right</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="12" column="0" colspan="2">
+           <widget class="QLabel" name="floatingSizeTitle">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>Floating Window Size</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignmentFlag::AlignCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item row="13" column="0">
+           <widget class="QLabel" name="floatingWindowWidthLabel">
+            <property name="text">
+             <string>Width</string>
+            </property>
+            <property name="toolTip">
+             <string>Size given to a window when you untile it, centred on its screen. Set either value to 0 to leave the size alone.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="13" column="1">
+           <widget class="QSpinBox" name="kcfg_FloatingWindowWidth">
+            <property name="toolTip">
+             <string>Size given to a window when you untile it, centred on its screen. Set either value to 0 to leave the size alone.</string>
+            </property>
+            <property name="suffix">
+             <string>px</string>
+            </property>
+            <property name="minimum">
+             <number>0</number>
+            </property>
+            <property name="maximum">
+             <number>7680</number>
+            </property>
+            <property name="value">
+             <number>1089</number>
+            </property>
+           </widget>
+          </item>
+          <item row="14" column="0">
+           <widget class="QLabel" name="floatingWindowHeightLabel">
+            <property name="text">
+             <string>Height</string>
+            </property>
+            <property name="toolTip">
+             <string>Size given to a window when you untile it, centred on its screen. Set either value to 0 to leave the size alone.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="14" column="1">
+           <widget class="QSpinBox" name="kcfg_FloatingWindowHeight">
+            <property name="toolTip">
+             <string>Size given to a window when you untile it, centred on its screen. Set either value to 0 to leave the size alone.</string>
+            </property>
+            <property name="suffix">
+             <string>px</string>
+            </property>
+            <property name="minimum">
+             <number>0</number>
+            </property>
+            <property name="maximum">
+             <number>7680</number>
+            </property>
+            <property name="value">
+             <number>467</number>
+            </property>
+           </widget>
+          </item>
+          <item row="15" column="0" colspan="2">
+           <spacer name="windowsVerticalSpacer">
+            <property name="orientation">
+             <enum>Qt::Orientation::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         <item row="2" column="0">
+          <widget class="QLabel" name="tiledWindowsBelowLabel">
+           <property name="text">
+            <string>Place Tiled Windows Below</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="bordersLabel">
+           <property name="text">
+            <string>Borders</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="0">
+          <widget class="QLabel" name="dragRetilePointLabel">
+           <property name="text">
+            <string>Drag Retile Point</string>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="1">
+          <widget class="QComboBox" name="kcfg_WindowDragPolicy">
+           <property name="currentIndex">
+            <number>1</number>
+           </property>
+           <item>
+            <property name="text">
+             <string>Always Tile</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Only Retile</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Never Tile</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="Filters">
+        <attribute name="title">
+         <string>Filters</string>
+        </attribute>
+        <layout class="QGridLayout" name="gridLayout_11">
+         <item row="2" column="0">
+          <widget class="QLabel" name="ignoreWindowClassesLabel">
+           <property name="text">
+            <string>Ignore Window Classes</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="rawRegexLabel">
+           <property name="text">
+            <string>Use Raw Regex</string>
+           </property>
+          </widget>
+         </item>
+         <item row="7" column="2">
+          <widget class="QCheckBox" name="kcfg_TilePopups">
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="0">
+          <widget class="QLabel" name="untileWindowClassesLabel">
+           <property name="text">
+            <string>Untile Window Classes</string>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="0">
+          <widget class="QLabel" name="ignoreWindowCaptionsLabel">
+           <property name="text">
+            <string>Ignore Window Captions</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="2">
+          <widget class="QLineEdit" name="kcfg_IgnoreWindowClasses">
+           <property name="text">
+            <string>krunner, yakuake, kded, polkit, plasmashell, xwaylandvideobridge</string>
+           </property>
+          </widget>
+         </item>
+         <item row="7" column="0">
+          <widget class="QLabel" name="tilePopupsLabel">
+           <property name="text">
+            <string>Tile Popup Windows</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="2">
+          <widget class="QLineEdit" name="kcfg_UntileWindowClasses"/>
+         </item>
+         <item row="5" column="2">
+          <widget class="QLineEdit" name="kcfg_UntileWindowCaptions"/>
+         </item>
+         <item row="0" column="0" colspan="3">
+          <widget class="QLabel" name="regexInfoLabel">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="text">
+            <string>All text fields accept regex. Read manual for more details.</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item row="8" column="0" colspan="3">
+          <spacer name="filtersVerticalSpacer">
+           <property name="orientation">
+            <enum>Qt::Orientation::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item row="5" column="0">
+          <widget class="QLabel" name="untileWindowCaptionsLabel">
+           <property name="text">
+            <string>Untile Window Captions</string>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="2">
+          <widget class="QLineEdit" name="kcfg_IgnoreWindowCaptions"/>
+         </item>
+         <item row="1" column="2">
+          <widget class="QCheckBox" name="kcfg_RawRegex">
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item row="2" column="1">
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Orientation::Vertical</enum>
+     </property>
+     <property name="sizeType">
+      <enum>QSizePolicy::Policy::Fixed</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>10</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

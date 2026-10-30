@@ -1,0 +1,12 @@
+{
+    "include": ["src/**/*.ts"],
+    "compilerOptions": {
+        "target": "es2016",
+        "module": "nodeNext",
+        "moduleResolution": "nodeNext",
+        "removeComments": true,
+        "lib": ["es2016"],
+        "alwaysStrict": true,
+        "strict": true
+    }
+}

@@ -1,0 +1,68 @@
+import QtQuick;
+import org.kde.kwin;
+
+Item {
+    id: root;
+
+    function getSettings() {
+        return getSettingsObj;
+    }
+    DBusCall {
+        id: getSettingsObj;
+        
+        service: "xyz.vaughanm.polonium";
+        path: "/saver";
+        dbusInterface: "xyz.vaughanm.polonium";
+        method: "GetSettings";
+    }
+
+    function setSettings() {
+        return setSettingsObj;
+    }
+    DBusCall {
+        id: setSettingsObj;
+        
+        service: "xyz.vaughanm.polonium";
+        path: "/saver";
+        dbusInterface: "xyz.vaughanm.polonium";
+        method: "SetSettings";
+    }
+
+    function resetSettings() {
+        return resetSettingsObj;
+    }
+    DBusCall {
+        id: resetSettingsObj;
+        
+        service: "xyz.vaughanm.polonium";
+        path: "/saver";
+        dbusInterface: "xyz.vaughanm.polonium";
+        method: "ResetSettings";
+    }
+
+    // One pending command from the overview effect, polled by the script.
+    function takeRequest() {
+        return takeRequestObj;
+    }
+    DBusCall {
+        id: takeRequestObj;
+
+        service: "xyz.vaughanm.polonium";
+        path: "/saver";
+        dbusInterface: "xyz.vaughanm.polonium";
+        method: "TakeRequest";
+    }
+
+    function moveMouseToFocus() {
+        return moveMouseToFocusObj;
+    }
+    DBusCall {
+        id: moveMouseToFocusObj;
+
+        service: "org.kde.kglobalaccel";
+        path: "/component/kwin";
+        dbusInterface: "org.kde.kglobalaccel.Component";
+        method: "invokeShortcut";
+        arguments: ["MoveMouseToFocus"];
+    }
+}

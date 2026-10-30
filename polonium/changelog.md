@@ -1,0 +1,152 @@
+# changelog
+
+## 1.2
+
+### 1.2.2
+
+- Shrink tiles when resizing with keyboard shortcuts at maximum size
+- Reorganize settings
+- Add option for where to place dragged windows
+- Fix shift-dragging untiled windows
+- Fix empty window filters matching windows with empty classes or captions
+- Add mouse follows focus
+
+### 1.2.1
+
+- Fix issue with setting reset
+- Try to work around ultra-rare bug where output passed as undefined (kwin bug?)
+- Improve stack based layout keyboard shortcuts
+- Add KWin layout
+- Add window dragging settings
+- Rewrite event system again
+- Add display class
+- "Desktop Identifiers" are now called "Displays"
+- Add option to completely ignore window classes/captions
+- Fixed fullscreen windows being below the taskbar
+- Support pinned windows and windows on multiple desktops
+
+### 1.2.0
+
+- Add depth-first binary tree (dwindle) and spiral
+- Add insert into active window
+- Double buffer active windows
+- Updating docs
+- Better half layout support
+- Three Column layout
+- Better desktop rebuilding
+- Pillars layout
+- Pager layout
+- Updated config page
+- Fix tile resizing
+- Added `--clear-settings` flag to DBus
+- Keep master setting for Half layout
+- Fix event simplification and Stack/Queue bugs
+- Use index pointers for stack based layouts
+
+## 1.1
+
+### 1.1
+
+- Per-desktop engine settings
+- DBus saving
+- Queue and event improvements
+- More settings
+- Activities bugfix
+- Probably still more
+
+### 1.1-b1
+
+- Engine settings
+- Activity support
+- Better event processing
+- Tile resizing
+- Keyboard shortcuts
+- Countless bugfixes
+- Probably more as well
+
+### 1.1-a1
+
+- Complete rewrite to event-based system using custom event loop
+- Most features gutted, will be added back in future
+
+## 1.0
+
+### 1.0
+
+- Various bugfixes
+
+### 1.0rc1
+
+- Monocle layout
+- Pinned windows fix
+- Fixed settings dialog and setting application
+- Support relative sizing as determined by engines
+- Add relative sizing support to half, btree and three column engines
+- Add ability for engines to save special configs in the settings saver
+- Added setting for auto saving configs when tiles are edited
+- Fixed tile dragging
+- Update docs
+
+### 1.0b2
+
+- Dragging tile functionality temporarily suspended due to kwin bugs
+- Better fullscreen/max/min support
+- Fixed some other strange untile/tile
+- Made resizing shortcuts a bit more useable
+- Added shortcuts for each layout
+
+### 1.0b1
+
+- Update to Plasma 6
+- Internal engine rewrite
+- Separate engine API
+- Use object-oriented paradigm instead of event-oriented
+- Use external kwin-api package
+- Stability improvements
+- Better multi-screen support
+- Better minimum size and resizing support
+
+## 0.6
+
+### 0.6.0
+
+- Sort of support minimum window sizes
+- Tile resizing done in pixels instead of relatives
+- Added live settings configuration per desktop
+- Added insertion points to Half and ThreeColumn
+- Added DBus interface to persist some settings across logouts
+- Fixed bug in retiling with several screens
+- Added rotation option to orient most layouts on their sides
+- Added reset option to DBus to reset settings
+
+## 0.5
+
+### 0.5.2
+
+- Fixed QTimer undefined bug
+- Added fullscreen handler on a per-window basis
+- Website redesign from @HimDek
+- Added rudimentary monocle layout
+- Refactored some stuff to use more per-window signals instead of global kwin ones
+- Basic support for quick tile shortcuts and quick tiling
+- Windows return to roughly where they were previously when tiling and retiling
+- Improved support for quick tile shortcuts
+- Basic unfullscreen when something is tiled (doesn't really work, kwin inconsistency?)
+
+### 0.5.1
+
+- Added an optional direction parameter to `TilingEngine.putClientInTile` and most descending classes
+- Added code to set geometry of windows when not active to preserve their shape
+- Added directional placement when dragging windows for more dragging predictability
+- Added directional placement when using shortcuts for more predictability
+- Fixed rare issue with TypeScript not allowing no parentheses `new Array<T>` statements
+- Rewrote much of the project internals around using QML as the main script type
+- Added new popup for when the tiling engine is switched
+- Use esbuild instead of tsc to compile and added typescript to npm dependencies
+- Fix up some issues with overextending tiling when resizing with shortcuts
+- Added section to FAQ about moving windows while keeping them tiled
+- Replaced limitations section of readme with info about X11
+- Insert starting on right with ThreeColumn
+- Added partial side insertion to ThreeColumn and Half to get around missing columns
+- Added private to package.json
+- Set fallback tiling engine to KWin
