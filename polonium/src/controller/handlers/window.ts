@@ -64,6 +64,13 @@ export class WindowHandler {
         ) {
             return false;
         }
+        // skip very small windows (e.g. screen sharing popups)
+        if (
+            this.window.frameGeometry.width < config().minWindowSize ||
+            this.window.frameGeometry.height < config().minWindowSize
+        ) {
+            return false;
+        }
         if (!this.canBeTiled()) {
             return false;
         }
