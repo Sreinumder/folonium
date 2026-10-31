@@ -239,6 +239,10 @@ class Media:
 
     def __init__(self, conn):
         self.conn = conn
+        # Last artwork seen per player. plasma-browser-integration rewrites the
+        # artwork file mid-track and reports artUrl:"" until the new one lands;
+        # holding the previous URL keeps the cover steady instead of blinking.
+        self.art_cache = {}
 
     def call(self, bus_name, path, interface, member, signature="", body=()):
         address = DBusAddress(path, bus_name=bus_name, interface=interface)
@@ -311,6 +315,20 @@ class Media:
             else:
                 artist = ", ".join(a for a in artists if a)
             entry = self.desktop_entry(name)
+            art = variant_value(metadata, "mpris:artUrl", "") or ""
+            track_id = variant_value(metadata, "mpris:trackid", "") or ""
+            if art:
+                self.art_cache[name] = (track_id, art)
+            else:
+                # Fall back to the last good art for this player, but only
+                # while it is the same track: a new track with no art is a
+                # genuine "no artwork" case.
+                track = variant_value(metadata, "mpris:trackid", "") or ""
+                cached = self.art_cache.get(name)
+                if cached:
+                    cached_track, cached_art = cached
+                    if cached_track == track:
+                        art = cached_art
             players.append(
                 {
                     "player": name,
@@ -319,7 +337,7 @@ class Media:
                     "title": variant_value(metadata, "xesam:title", "") or "",
                     "artist": artist,
                     "url": variant_value(metadata, "xesam:url", "") or "",
-                    "art": variant_value(metadata, "mpris:artUrl", "") or "",
+                    "art": art,
                     "length": int(variant_value(metadata, "mpris:length", 0) or 0),
                     "position": int(variant_value(props, "Position", 0) or 0),
                     "rate": float(variant_value(props, "Rate", 1.0) or 1.0),

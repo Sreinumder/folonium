@@ -116,6 +116,10 @@ FocusScope {
     readonly property int mediaCardHeight: 72
     readonly property int topBand: root.chipsShown ? Math.max(root.chipRowH, root.mediaCardHeight) : 0
     property int mediaTick: 0
+    // Last non-empty artwork per player. plasma-browser-integration rewrites
+    // its temp file while the track plays and reports art:"" for a poll or
+    // two; without this the cover blinks out on every such poll.
+    property var artCache: ({})
     property real mediaAt: 0
 
     property bool ready: false
@@ -849,17 +853,50 @@ FocusScope {
         }
         const players = data.players || [];
         root.mediaAt = data.at || 0;
-        // Same player count: update roles in place so a card being dragged at
-        // the moment the poll lands is not recreated under the pointer.
-        if (players.length === mediaModel.count) {
-            for (let i = 0; i < players.length; i++) {
-                mediaModel.set(i, players[i]);
-            }
-            return;
-        }
-        mediaModel.clear();
         for (const player of players) {
-            mediaModel.append(player);
+            const key = player.player || player.app || "";
+            if (!key) {
+                continue;
+            }
+            if (player.art) {
+                root.artCache[key] = player.art;
+            } else if (root.artCache[key]) {
+                // Keep showing the last artwork instead of an empty slot.
+                player.art = root.artCache[key];
+            }
+        }
+        // Reconcile by player identity instead of clearing the model. A clear
+        // rebuilds every card, which makes the cover Image reload from scratch
+        // and blink; players also come and go between polls, so a count check
+        // rebuilt the whole strip whenever one dropped out.
+        const seen = {};
+        for (let i = 0; i < players.length; i++) {
+            seen[players[i].player || players[i].app || String(i)] = true;
+        }
+        // Drop cards whose player vanished, then update or append the rest.
+        for (let i = mediaModel.count - 1; i >= 0; i--) {
+            const existing = mediaModel.get(i);
+            const key = existing.player || existing.app || "";
+            if (!seen[key]) {
+                mediaModel.remove(i);
+            }
+        }
+        for (let i = 0; i < players.length; i++) {
+            const player = players[i];
+            const key = player.player || player.app || "";
+            let at = -1;
+            for (let j = 0; j < mediaModel.count; j++) {
+                const existing = mediaModel.get(j);
+                if ((existing.player || existing.app || "") === key) {
+                    at = j;
+                    break;
+                }
+            }
+            if (at >= 0) {
+                mediaModel.set(at, player);
+            } else {
+                mediaModel.append(player);
+            }
         }
     }
 
@@ -2091,6 +2128,10 @@ FocusScope {
                     required property bool canLoop
                     required property bool shuffle
 
+                    // The artwork slot exists whenever there is anything to
+                    // draw in it: real art, or the app icon standing in.
+                    readonly property bool hasCover: art.length > 0 || icon.length > 0
+
                     readonly property real shownPosition: {
                         root.mediaTick;
                         const elapsed = status === "Playing" ? (Date.now() - root.mediaAt) * 1000 * Math.max(0, rate) : 0;
@@ -2115,7 +2156,10 @@ FocusScope {
 
                     Image {
                         id: cover
-                        visible: mediaCard.art.length > 0
+                        // No artwork at all: the app icon below stands in as
+                        // the cover, so the slot never reads as broken.
+                        readonly property bool loaded: status === Image.Ready
+                        visible: mediaCard.art.length > 0 && loaded
                         x: 6
                         y: 6
                         width: root.mediaCardHeight - 12
@@ -2125,11 +2169,41 @@ FocusScope {
                         asynchronous: true
                         sourceSize.width: 120
                         sourceSize.height: 120
+                        // Keep the previous pixmap on screen while the new art
+                        // decodes, instead of blinking through "Loading".
+                        cache: true
                     }
 
-                    // The app's own icon, resolved from its .desktop file.
+                    // Fallback cover: the icon of the app the media plays in,
+                    // drawn large in the artwork slot when no art is found.
+                    Item {
+                        id: iconCover
+                        // Shown whenever the real cover is not painting yet:
+                        // no art, art that failed to load, or art decoding.
+                        visible: mediaCard.icon.length > 0 && !cover.visible
+                        x: cover.x
+                        y: cover.y
+                        width: cover.width
+                        height: cover.height
+
+                        Rectangle {
+                            anchors.fill: parent
+                            color: root.alpha(root.panelColor, 0.35)
+                        }
+
+                        Kirigami.Icon {
+                            anchors.centerIn: parent
+                            width: Math.round(parent.width * 0.62)
+                            height: width
+                            source: mediaCard.icon
+                        }
+                    }
+
+                    // The app's own icon, resolved from its .desktop file. Over
+                    // artwork it is a small badge; as the fallback cover it is
+                    // already the whole slot, so the badge would double it.
                     Rectangle {
-                        visible: mediaCard.icon.length > 0
+                        visible: mediaCard.icon.length > 0 && mediaCard.art.length > 0 && cover.status === Image.Ready
                         x: cover.x + cover.width - 17
                         y: cover.y + cover.height - 17
                         width: 17
@@ -2145,7 +2219,7 @@ FocusScope {
                     }
 
                     Column {
-                        x: cover.visible ? cover.x + cover.width + 8 : 8
+                        x: mediaCard.hasCover ? cover.x + cover.width + 8 : 8
                         y: 5
                         width: mediaCard.width - x - 6
                         spacing: 1
