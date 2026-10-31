@@ -3779,21 +3779,14 @@ var Controller = class {
       this.qmlObjects.dbus?.moveMouseToFocus().call();
       return;
     }
-    // A desktop over the overview's monocle limit is previewed tiled; clicking
-    // one of its windows switches it back to a tiled layout.
+    // A monocle desktop is previewed with the tiled shape it would use, so the
+    // user can see where windows would go. Picking one only focuses it: the
+    // desktop stays in monocle, which then stacks it full size again.
     if (request.t === "tiled") {
       const target = this.workspace.stackingOrder.find(
         (w) => String(w.internalId) === request.id
       );
       if (target === undefined) return;
-      const display = Display.generateWindow(target).next().value;
-      if (display === undefined) return;
-      if (this.getDriver(display) === undefined) return;
-      this.queueEvent({
-        t: "changeEngine",
-        display: display,
-        engineSettings: { monocle: false }
-      });
       if (target.minimized) target.minimized = false;
       this.workspace.activeWindow = target;
       this.qmlObjects.dbus?.moveMouseToFocus().call();

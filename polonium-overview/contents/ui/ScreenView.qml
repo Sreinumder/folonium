@@ -105,8 +105,8 @@ FocusScope {
 
     readonly property int tileRadius: 0
 
-    // What sits behind the panel: live desktop, wallpaper or a flat colour.
-    readonly property int backdropMode: cfg.Backdrop
+    // What sits behind the panel: the wallpaper, like KDE's own overview.
+    readonly property int backdropMode: 2
     readonly property Item backdropSource: backdropMode === 1 ? backdrop : (backdropMode === 2 ? wallpaperBg : null)
     readonly property bool backdropBlur: backdropSource !== null
 
@@ -284,7 +284,7 @@ FocusScope {
                 if (!root.desktopPicked && root.originDesktop !== null) {
                     root.switchTo(root.originDesktop);
                 }
-                if (!root.desktopPicked && root.openTransposed && root.cfg.TransposeDesktopClick) {
+                if (!root.desktopPicked && root.openTransposed && root.cfg.Transpose) {
                     root.warpPointer(root.openPointer, 150);
                 }
                 root.originDesktop = null;
@@ -1070,7 +1070,7 @@ FocusScope {
             window.minimized = false;
         }
         KWinComponents.Workspace.activeWindow = window;
-        if (at !== undefined && at !== null) {
+        if (root.cfg.TransposeDesktopClick && at !== undefined && at !== null) {
             root.warpPointer(at, 150);
         }
         effect.deactivate();
@@ -1085,7 +1085,7 @@ FocusScope {
         }
         requestCall.arguments = [JSON.stringify({ t: "tiled", id: String(window.internalId) })];
         requestCall.call();
-        if (at !== undefined && at !== null) {
+        if (root.cfg.TransposeDesktopClick && at !== undefined && at !== null) {
             root.warpPointer(at, 150);
         }
         effect.deactivate();
@@ -1488,7 +1488,7 @@ FocusScope {
         y: mini ? tile.height - chip - 6 : (inPreview ? Math.round(previewRect.y * tile.height) + 2 : initY)
         width: mini ? chip : (inPreview ? Math.max(1, Math.round(previewRect.w * tile.width) - 4) : Math.max(1, initW))
         height: mini ? chip : (inPreview ? Math.max(1, Math.round(previewRect.h * tile.height) - 4) : Math.max(1, initH))
-        readonly property bool shown: !window.skipPager && (window.pid > 0 || window.resourceClass !== "") && (mini ? root.cfg.ShowMinimized : width > 0 && height > 0)
+        readonly property bool shown: !window.skipPager && (window.pid > 0 || window.resourceClass !== "") && (mini ? true : width > 0 && height > 0)
         readonly property bool compact: Math.min(width, height) < 56
         readonly property bool dragging: root.dragTile === win && root.dragActive
         readonly property bool hovered: dragArea.containsMouse
@@ -1804,8 +1804,16 @@ FocusScope {
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton
             enabled: desktopTile.screen === root.targetScreen && !root.dragActive
-            onClicked: {
+            onClicked: (mouse) => {
                 root.desktopPicked = true;
+                // Transpose the click into the desktop it landed on: the tile
+                // is the whole screen scaled down, so the click's fraction is
+                // the same point on the real desktop.
+                const g = desktopTile.group;
+                if (root.cfg.TransposeDesktopClick && g && g.s > 0 && g.w > 0) {
+                    root.warpPointer(Qt.point(root.screenX + mouse.x / g.s,
+                                              root.screenY + mouse.y / g.s), 150);
+                }
                 root.switchTo(desktopTile.desktop);
                 effect.deactivate();
             }
@@ -1848,7 +1856,7 @@ FocusScope {
     Text {
         anchors.centerIn: parent
         visible: root.groups.length > 0 && root.groups.every(function(g){ return !g.occupied; })
-        text: "There are no windows in any desktop."
+        text: "There is no window in any desktop."
         color: "white"
         font.pointSize: 20
         z: 1000
@@ -1907,12 +1915,6 @@ FocusScope {
         }
     }
 
-    Rectangle {
-        anchors.fill: parent
-        color: "black"
-        opacity: root.openProgress * root.cfg.BackdropDim / 100
-    }
-
     MouseArea {
         id: globalMouseArea
         anchors.fill: parent
@@ -1959,7 +1961,7 @@ FocusScope {
         autoPaddingEnabled: false
         blurEnabled: true
         blur: 1.0
-        blurMax: root.cfg.BlurRadius
+        blurMax: 64
     }
 
     Item {
@@ -2023,8 +2025,15 @@ FocusScope {
                         anchors.fill: parent
                         hoverEnabled: true
                         acceptedButtons: Qt.LeftButton
-                        onClicked: {
+                        onClicked: (mouse) => {
                             root.desktopPicked = true;
+                            // An empty chip is the screen shape too, so a click
+                            // lands at the same relative point on that desktop.
+                            if (root.cfg.TransposeDesktopClick && chip.width > 0 && chip.height > 0) {
+                                root.warpPointer(Qt.point(
+                                    root.screenX + mouse.x / chip.width * root.screenW,
+                                    root.screenY + mouse.y / chip.height * root.screenH), 150);
+                            }
                             root.switchTo(chip.desktop);
                             effect.deactivate();
                         }

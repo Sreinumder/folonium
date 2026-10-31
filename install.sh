@@ -123,6 +123,9 @@ reload_kwin() {
     qdbus_cmd org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript polonium >/dev/null 2>&1 || true
     qdbus_cmd org.kde.KWin /Scripting org.kde.kwin.Scripting.loadDeclarativeScript \
         "$SCRIPT_DIR/contents/ui/main.qml" polonium >/dev/null 2>&1 || true
+    # A declarative script only runs after start(); without it the script is
+    # loaded but never initializes (no states, no tiling).
+    qdbus_cmd org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null 2>&1 || true
     qdbus_cmd org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect betteroverview >/dev/null 2>&1 || true
     qdbus_cmd org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect betteroverview >/dev/null 2>&1 || true
 }
@@ -148,6 +151,11 @@ install_all() {
     install_saver
     set_plugin poloniumEnabled true
     set_plugin betteroverviewEnabled true
+    if command -v kwriteconfig6 >/dev/null 2>&1; then
+        kwriteconfig6 --file kwinrc --group Script-polonium --key UseDBusSaver true --type bool
+    elif command -v kwriteconfig5 >/dev/null 2>&1; then
+        kwriteconfig5 --file kwinrc --group Script-polonium --key UseDBusSaver true --type bool
+    fi
     restart_saver
     reload_kwin
     say "Done. Toggle the overview with Meta+G (KWin shortcut \"Better Overview\")."
