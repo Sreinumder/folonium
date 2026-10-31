@@ -24,12 +24,6 @@ export interface QmlObjects {
 export interface Shortcuts {
     toggleActiveTiling(): ShortcutHandler;
 
-    setEngineBTree(): ShortcutHandler;
-    setEngineHalf(): ShortcutHandler;
-    setEngineThreeColumn(): ShortcutHandler;
-    setEnginePillars(): ShortcutHandler;
-    setEnginePager(): ShortcutHandler;
-    setEngineKWin(): ShortcutHandler;
 
     activateAbove(): ShortcutHandler;
     activateBelow(): ShortcutHandler;
@@ -47,17 +41,14 @@ export interface Shortcuts {
     resizeRight(): ShortcutHandler;
 
     toggleSettingsMenu(): ShortcutHandler;
-    cycleEngine(): ShortcutHandler;
     rotateLayout(): ShortcutHandler;
-
-    // Custom Engine
-    setEngineCustom(): ShortcutHandler;
-    customRotateLayout(): ShortcutHandler;
-    customMirrorLayout(): ShortcutHandler;
-    customCycleHorizontalRatio(): ShortcutHandler;
-    customCycleVerticalRatio(): ShortcutHandler;
-    customCycleLayout(): ShortcutHandler;
-    customCycleWindowOrder(): ShortcutHandler;
+    mirrorLayout(): ShortcutHandler;
+    rotateWindows(): ShortcutHandler;
+    cycleLayout(): ShortcutHandler;
+    cycleHorizontalRatio(): ShortcutHandler;
+    cycleVerticalRatio(): ShortcutHandler;
+    toggleKwinEngine(): ShortcutHandler;
+    toggleMonocle(): ShortcutHandler;
 }
 
 export interface Settings extends QObject {

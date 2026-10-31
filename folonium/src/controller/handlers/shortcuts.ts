@@ -1,7 +1,7 @@
 import { Workspace } from "kwin-api/qml";
 import { Shortcuts } from "../../extern";
 import { config, console, controller as ctrl, qt } from "..";
-import { Direction, TilingEngineType } from "../../engine";
+import { Direction } from "../../engine";
 import { Display } from "../event";
 import { Edge, Tile } from "kwin-api";
 
@@ -16,37 +16,6 @@ export class ShortcutsHandler {
         this.shortcuts
             .toggleActiveTiling()
             .activated.connect(this.toggleActiveTiling.bind(this));
-
-        this.shortcuts
-            .setEngineBTree()
-            .activated.connect(
-                this.setEngineType.bind(this, TilingEngineType.BTree),
-            );
-        this.shortcuts
-            .setEngineHalf()
-            .activated.connect(
-                this.setEngineType.bind(this, TilingEngineType.Half),
-            );
-        this.shortcuts
-            .setEngineThreeColumn()
-            .activated.connect(
-                this.setEngineType.bind(this, TilingEngineType.ThreeColumn),
-            );
-        this.shortcuts
-            .setEnginePillars()
-            .activated.connect(
-                this.setEngineType.bind(this, TilingEngineType.Pillars),
-            );
-        this.shortcuts
-            .setEnginePager()
-            .activated.connect(
-                this.setEngineType.bind(this, TilingEngineType.Pager),
-            );
-        this.shortcuts
-            .setEngineKWin()
-            .activated.connect(
-                this.setEngineType.bind(this, TilingEngineType.KWin),
-            );
 
         this.shortcuts
             .activateBelow()
@@ -110,37 +79,9 @@ export class ShortcutsHandler {
             .activated.connect(this.toggleSettingsMenu.bind(this));
 
         this.shortcuts
-            .cycleEngine()
-            .activated.connect(this.cycleEngine.bind(this));
-
-        this.shortcuts
             .rotateLayout()
             .activated.connect(this.rotateLayout.bind(this));
 
-        // Custom Engine shortcuts
-        this.shortcuts
-            .setEngineCustom()
-            .activated.connect(
-                this.setEngineType.bind(this, TilingEngineType.Custom),
-            );
-        this.shortcuts
-            .customRotateLayout()
-            .activated.connect(this.customRotateLayout.bind(this));
-        this.shortcuts
-            .customMirrorLayout()
-            .activated.connect(this.customMirrorLayout.bind(this));
-        this.shortcuts
-            .customCycleHorizontalRatio()
-            .activated.connect(this.customCycleHorizontalRatio.bind(this));
-        this.shortcuts
-            .customCycleVerticalRatio()
-            .activated.connect(this.customCycleVerticalRatio.bind(this));
-        this.shortcuts
-            .customCycleLayout()
-            .activated.connect(this.customCycleLayout.bind(this));
-        this.shortcuts
-            .customCycleWindowOrder()
-            .activated.connect(this.customCycleWindowOrder.bind(this));
     }
 
     toggleActiveTiling() {
@@ -163,19 +104,7 @@ export class ShortcutsHandler {
         }
     }
 
-    setEngineType(engineType: TilingEngineType) {
-        ctrl().queueEvent({
-            t: "changeEngine",
-            display: new Display(
-                this.workspace.currentDesktop,
-                this.workspace.currentActivity,
-                this.workspace.activeScreen,
-            ),
-            engineType: engineType,
-        });
-    }
-
-    getTileInDirection(tile: Tile, rootTile: Tile, edge: Edge): Tile | null {
+        getTileInDirection(tile: Tile, rootTile: Tile, edge: Edge): Tile | null {
         if (tile == rootTile) return null;
         let x = tile.absoluteGeometry.x;
         let y = tile.absoluteGeometry.y;
@@ -375,67 +304,4 @@ export class ShortcutsHandler {
         });
     }
 
-    // Custom Engine shortcut handlers
-    customRotateLayout() {
-        this.sendCustomAction("rotateLayout");
-    }
-
-    customMirrorLayout() {
-        this.sendCustomAction("mirrorLayout");
-    }
-
-    customCycleHorizontalRatio() {
-        this.sendCustomAction("cycleHorizontalRatio");
-    }
-
-    customCycleVerticalRatio() {
-        this.sendCustomAction("cycleVerticalRatio");
-    }
-
-    customCycleLayout() {
-        this.sendCustomAction("cycleLayout");
-    }
-
-    customCycleWindowOrder() {
-        this.sendCustomAction("cycleWindowOrder");
-    }
-
-    private sendCustomAction(action: string) {
-        const display = new Display(
-            this.workspace.currentDesktop,
-            this.workspace.currentActivity,
-            this.workspace.activeScreen,
-        );
-        const engineSettings = ctrl().getEngineSettings(display);
-        if (engineSettings === undefined) return;
-        // Send action via settings - the engine will handle it on next rebuild
-        // For now, we just trigger a rebuild with the same settings
-        // The engine reads the action from settings or we could add a direct call
-        ctrl().queueEvent({
-            t: "changeEngine",
-            display: display,
-            engineSettings: Object.assign({}, engineSettings, { _customAction: action }),
-        });
-    }
-
-    cycleEngine() {
-        const current = ctrl().getEngineType(
-            new Display(
-                this.workspace.currentDesktop,
-                this.workspace.currentActivity,
-                this.workspace.activeScreen,
-            ),
-        );
-        if (current === undefined) {
-            // Should never happen, but it's better for code quality
-            // that we assume that it can and we handle the error without assumption.
-            return;
-        }
-        let next = (current + 1) % TilingEngineType._Loop;
-        // the kwin engine only adopts hand-drawn tiles, so it is not worth cycling to
-        if (next === TilingEngineType.KWin) {
-            next = (next + 1) % TilingEngineType._Loop;
-        }
-        this.setEngineType(next);
-    }
 }
