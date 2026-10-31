@@ -29,17 +29,29 @@ FocusScope {
     readonly property int groupGap: 6
     readonly property int chipRowH: 46
     readonly property string activity: KWinComponents.Workspace.currentActivity
-    // Monocle desktops up to this many windows become one cell per window;
-    // larger ones are previewed tiled and switch layout when clicked.
-    readonly property int monocleLimit: Math.max(1, cfg.MonocleLimit || 4)
 
-    // Dragging or reaching the top edge reveals the empty-desktop chips; the
-    // grid slides down so the chips sit in clear space instead of on top of
-    // the first desktops. The media strip shares that band.
-    readonly property bool topHover: mouseY < 56
+    // Dragging or reaching the top edge, or resting on the media strip, reveals
+    // the top band; the grid slides down so nothing sits under it. The strip's
+    // own mouse areas swallow hover, so it reports itself.
+    property bool mediaHover: false
+    readonly property bool topHover: mediaHover || mouseY < root.outerPad + root.mediaCardHeight
     readonly property bool chipsShown: dragActive || topHover
-    onChipsShownChanged: rebuildGroups()
-    onMonocleLimitChanged: rebuildGroups()
+    // The band is reserved at once; the numbers fade in after the drop.
+    property bool chipsReady: false
+    Timer {
+        id: chipsDelay
+        interval: Kirigami.Units.longDuration
+        onTriggered: root.chipsReady = root.chipsShown
+    }
+    onChipsShownChanged: {
+        if (chipsShown) {
+            chipsDelay.restart();
+        } else {
+            chipsDelay.stop();
+            root.chipsReady = false;
+        }
+        rebuildGroups();
+    }
 
     // Occupied desktops become groups packed to the largest common scale;
     // empty ones only get a numbered chip at the top.
@@ -98,10 +110,10 @@ FocusScope {
     readonly property Item backdropSource: backdropMode === 1 ? backdrop : (backdropMode === 2 ? wallpaperBg : null)
     readonly property bool backdropBlur: backdropSource !== null
 
-    // Now playing sits in the top-right corner, small enough not to push the
-    // grid down. The empty-desktop chips reserve the top band when they show.
+    // Now playing sits in the top-right corner. The revealed top band is at
+    // least as tall as a media card, so the grid drops clear of both.
     readonly property int mediaCardHeight: 72
-    readonly property int topBand: root.chipsShown ? root.chipRowH : 0
+    readonly property int topBand: root.chipsShown ? Math.max(root.chipRowH, root.mediaCardHeight) : 0
     property int mediaTick: 0
     property real mediaAt: 0
 
@@ -253,6 +265,10 @@ FocusScope {
                 root.mouseY = root.openPointer.y;
                 root.pointerMoved = false;
                 root.openTransposed = false;
+                // The grid may be about to drop; let it land before the
+                // numbers fade in.
+                root.chipsReady = false;
+                chipsDelay.restart();
                 root.updateCursorTarget();
                 root.dropTargetDesktop = null;
                 statesCall.call();
@@ -307,25 +323,6 @@ FocusScope {
         }
         root.cursorDesktop = desktop;
         root.cursorWindow = found;
-    }
-
-    // Block shape for a monocle desktop's window cells: two side by side,
-    // three in a row, four as a square. Above that a near-square block.
-    function blockShape(cells) {
-        if (cells <= 1) {
-            return { rows: 1, cols: 1 };
-        }
-        if (cells === 2) {
-            return { rows: 1, cols: 2 };
-        }
-        if (cells === 3) {
-            return { rows: 1, cols: 3 };
-        }
-        if (cells === 4) {
-            return { rows: 2, cols: 2 };
-        }
-        const cols = Math.ceil(Math.sqrt(cells));
-        return { rows: Math.ceil(cells / cols), cols: cols };
     }
 
     // The DSL bracket layout ("[1 2]" side by side, "/1 1/" stacked) to leaf
@@ -449,22 +446,14 @@ FocusScope {
                 desktopWindows.push(w);
             }
             const shown = desktopWindows.filter(w => !w.minimized);
+            // A monocle desktop previews the shape it would tile into. It never
+            // becomes one desktop-sized cell per window: that changed the
+            // desktop's block and reshuffled the whole pack.
             const mono = state.mono === true && shown.length > 0;
-            let monoMode = mono ? "cells" : "";
             let previewRects = null;
-            let monoCols = 1;
-            let monoRows = 1;
-            let cells = 1;
             if (mono) {
-                if (shown.length > root.monocleLimit) {
-                    monoMode = "preview";
-                    previewRects = root.shapeRects(state.shape || "", shown.length);
-                } else {
-                    cells = shown.length;
-                    const shape = root.blockShape(cells);
-                    monoCols = shape.cols;
-                    monoRows = shape.rows;
-                }
+                const rects = root.shapeRects(state.shape || "", shown.length);
+                previewRects = rects.length === shown.length ? rects : null;
             }
             list.push({
                 index: i,
@@ -472,38 +461,31 @@ FocusScope {
                 number: d.x11DesktopNumber,
                 occupied: desktopWindows.length > 0,
                 mono: mono,
-                monoMode: monoMode,
                 monoWindows: mono ? shown : [],
                 previewRects: previewRects,
-                monoCols: monoCols,
-                monoRows: monoRows,
-                cells: cells,
-                layout: state.layout || "",
                 count: desktopWindows.length
             });
         }
         return list;
     }
 
-    // Place the blocks into a grid of screen-shaped cells. The blocks have
-    // fixed shapes, so every column count is tried and the one that gives the
-    // largest, most square-ish grid wins.
+    // Place the desktops into a grid of equally sized, screen-shaped cells.
+    // Every desktop gets one cell, so the pack order always follows desktop
+    // order and no layout can reshuffle it.
     function packGroups(occupied) {
         const availW = root.screenW - 2 * root.outerPad;
         const availH = root.screenH - 2 * root.outerPad - root.topBand;
         const aspect = root.screenW / Math.max(1, root.screenH);
         const items = [];
-        let total = 0;
         for (const g of occupied) {
-            const shape = root.blockShape(g.cells);
-            items.push({ g: g, rows: shape.rows, cols: shape.cols });
-            total += g.cells;
+            items.push({ g: g, rows: 1, cols: 1 });
         }
+        const total = items.length;
         if (items.length === 0) {
             return null;
         }
-        // Small blocks first fill the gaps the big blocks leave behind.
-        items.sort((a, b) => (a.rows * a.cols - b.rows * b.cols) || (a.g.index - b.g.index));
+        // Every block is one cell, so this keeps desktop order.
+        items.sort((a, b) => a.g.index - b.g.index);
         let best = null;
         for (let C = 1; C <= total; C++) {
             if (!items.every(it => it.cols <= C)) {
@@ -1066,12 +1048,7 @@ FocusScope {
             const fy = w.height > 0 ? Math.max(0, Math.min(1, (p.y - w.y) / w.height)) : 0.5;
             const id = String(w.internalId);
             const at = g.monoWindows !== undefined ? g.monoWindows.findIndex(c => String(c.internalId) === id) : -1;
-            if (at >= 0 && g.monoMode === "cells") {
-                const cw = g.w / Math.max(1, g.monoCols);
-                const ch = g.h / Math.max(1, g.monoRows);
-                x = g.x + (at % g.monoCols) * cw + fx * cw;
-                y = g.y + Math.floor(at / g.monoCols) * ch + fy * ch;
-            } else if (at >= 0 && g.monoMode === "preview" && g.previewRects !== null) {
+            if (at >= 0 && g.previewRects !== null) {
                 const r = g.previewRects[at];
                 if (r !== undefined) {
                     x = g.x + (r.x + fx * r.w) * g.w;
@@ -1104,8 +1081,8 @@ FocusScope {
         effect.deactivate();
     }
 
-    // A window on a desktop over the monocle limit: switching to the previewed
-    // tiled layout and focusing it are one request to polonium.
+    // A monocle desktop previews the layout it would tile into: switching to
+    // that layout and focusing the window are one request to polonium.
     function activateTiled(window, desktop, at) {
         root.desktopPicked = true;
         if (desktop !== undefined) {
@@ -1326,25 +1303,21 @@ FocusScope {
         readonly property int slot: mini ? tile.minimizedItems.findIndex(t => String(t.window.internalId) === String(window.internalId)) : -1
         readonly property real chip: tile.chipSize
 
-        // A monocle desktop is a block of screen-shaped cells, one per window;
-        // over the limit it previews the tiled shape instead.
+        // A monocle desktop previews the layout it would tile into; the window
+        // is looked up by its index in that desktop's window list.
         readonly property int cellIndex: mini || tile.monoWindows === undefined ? -1 : tile.monoWindows.findIndex(w => String(w.internalId) === String(window.internalId))
-        readonly property bool inCell: cellIndex >= 0
-        readonly property bool inPreview: !mini && inCell && tile.previewRects !== null
+        readonly property bool inPreview: !mini && cellIndex >= 0 && tile.previewRects !== null
         readonly property var previewRect: inPreview ? tile.previewRects[cellIndex] : null
-        readonly property real cellW: tile.width / Math.max(1, tile.monoCols)
-        readonly property real cellH: tile.height / Math.max(1, tile.monoRows)
-        readonly property real cellInset: inCell ? 2 : 0
 
         readonly property real wx: (window.x - tile.screen.geometry.x) * s
         readonly property real wy: (window.y - tile.screen.geometry.y) * s
         readonly property real ww: window.width * s
         readonly property real wh: window.height * s
         // the on-screen part of the window, in tile coordinates
-        readonly property real initX: inCell ? Math.round((cellIndex % Math.max(1, tile.monoCols)) * cellW + cellInset) : Math.round(Math.max(0, wx))
-        readonly property real initY: inCell ? Math.round(Math.floor(cellIndex / Math.max(1, tile.monoCols)) * cellH + cellInset) : Math.round(Math.max(0, wy))
-        readonly property real initW: inCell ? Math.max(1, Math.round(cellW - 2 * cellInset)) : Math.round(Math.min(wx + ww, tile.width) - initX)
-        readonly property real initH: inCell ? Math.max(1, Math.round(cellH - 2 * cellInset)) : Math.round(Math.min(wy + wh, tile.height) - initY)
+        readonly property real initX: Math.round(Math.max(0, wx))
+        readonly property real initY: Math.round(Math.max(0, wy))
+        readonly property real initW: Math.round(Math.min(wx + ww, tile.width) - initX)
+        readonly property real initH: Math.round(Math.min(wy + wh, tile.height) - initY)
         // Preview leaves share the tile with a small gap between them.
         x: mini ? 6 + slot * (chip + 4) : (inPreview ? Math.round(previewRect.x * tile.width) + 2 : initX)
         y: mini ? tile.height - chip - 6 : (inPreview ? Math.round(previewRect.y * tile.height) + 2 : initY)
@@ -1381,10 +1354,10 @@ FocusScope {
         }
 
         Item {
-            x: win.mini || win.inCell ? 0 : Math.round(Math.min(0, win.wx))
-            y: win.mini || win.inCell ? 0 : Math.round(Math.min(0, win.wy))
-            width: win.mini ? win.chip : (win.inCell ? win.width : Math.round(win.ww))
-            height: win.mini ? win.chip : (win.inCell ? win.height : Math.round(win.wh))
+            x: win.mini ? 0 : Math.round(Math.min(0, win.wx))
+            y: win.mini ? 0 : Math.round(Math.min(0, win.wy))
+            width: win.mini ? win.chip : Math.round(win.ww)
+            height: win.mini ? win.chip : Math.round(win.wh)
 
             Rectangle {
                 anchors.fill: parent
@@ -1516,21 +1489,15 @@ FocusScope {
                     return;
                 }
                 if (mouse.button === Qt.LeftButton) {
-                    // Transpose the click into screen coordinates. A normal
-                    // tile is the whole screen scaled down, so the click's
-                    // fraction is the same point on the desktop; a monocle
-                    // cell is one whole window, so it maps from its own top
-                    // corner. Minimized chips sit outside the preview.
+                    // Transpose the click into screen coordinates: a tile is
+                    // the whole screen scaled down, so the click's fraction is
+                    // the same point on the desktop. Minimized chips sit
+                    // outside the preview and get no warp.
                     let at = null;
                     if (!win.mini) {
                         const geo = win.tile.screen.geometry;
-                        if (win.inCell && !win.inPreview) {
-                            at = Qt.point(geo.x + mouse.x / win.width * geo.width,
-                                          geo.y + mouse.y / win.height * geo.height);
-                        } else {
-                            const p = win.mapToItem(win.tile, mouse.x, mouse.y);
-                            at = Qt.point(geo.x + p.x / win.s, geo.y + p.y / win.s);
-                        }
+                        const p = win.mapToItem(win.tile, mouse.x, mouse.y);
+                        at = Qt.point(geo.x + p.x / win.s, geo.y + p.y / win.s);
                     }
                     if (win.inPreview) {
                         root.activateTiled(win.window, win.tile.desktop, at);
@@ -1558,7 +1525,7 @@ FocusScope {
         readonly property var group: root.groupFor(index)
         readonly property real scale: group && group.s > 0 ? group.s : 0.001
         readonly property bool occupied: group !== null && group.occupied
-        readonly property string layoutText: group ? group.layout : ""
+        // Monocle has no slots to swap windows between.
         readonly property bool monoLayout: group ? group.mono : false
 
         readonly property var minimizedItems: {
@@ -1575,8 +1542,6 @@ FocusScope {
         // delegate only has to look up its own window.
         readonly property var monoWindows: group ? group.monoWindows : []
         readonly property var previewRects: group ? group.previewRects : null
-        readonly property int monoCols: group ? group.monoCols : 1
-        readonly property int monoRows: group ? group.monoRows : 1
         readonly property bool initial: !root.pointerMoved && root.cursorDesktop !== null && root.cursorDesktop.x11DesktopNumber === desktopTile.desktop.x11DesktopNumber
         // The window under a point in this tile, ignoring one being dragged.
         function windowAt(x, y, ignore) {
@@ -1603,6 +1568,14 @@ FocusScope {
         width: group ? group.w : 0
         height: group ? group.h : 0
         visible: occupied && width > 0 && height > 0
+
+        // Revealing the top band moves the pack down; slide rather than jump.
+        Behavior on x {
+            NumberAnimation { duration: Kirigami.Units.longDuration; easing.type: Easing.OutCubic }
+        }
+        Behavior on y {
+            NumberAnimation { duration: Kirigami.Units.longDuration; easing.type: Easing.OutCubic }
+        }
 
         Rectangle {
             anchors.fill: parent
@@ -1638,36 +1611,25 @@ FocusScope {
             }
         }
 
-        // Desktop number then the tiling polonium runs there, top left — larger.
+        // Desktop number, top left.
         Rectangle {
             z: 40000
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.margins: 6
-            width: labelRow.implicitWidth + 12
-            height: labelRow.implicitHeight + 6
+            width: numberText.implicitWidth + 12
+            height: numberText.implicitHeight + 6
             radius: 4
             color: "black"
             opacity: 0.75
 
-            Row {
-                id: labelRow
+            Text {
+                id: numberText
                 anchors.centerIn: parent
-                spacing: 6
-
-                Text {
-                    text: desktopTile.desktop.x11DesktopNumber
-                    color: "white"
-                    font.pixelSize: 11
-                    font.weight: Font.DemiBold
-                }
-                // Layout text at the end
-                Text {
-                    visible: desktopTile.layoutText.length > 0
-                    text: desktopTile.layoutText + (desktopTile.monoLayout ? "  ·  mono" : "")
-                    color: "white"
-                    font.pixelSize: 10
-                }
+                text: desktopTile.desktop.x11DesktopNumber
+                color: "white"
+                font.pixelSize: 11
+                font.weight: Font.DemiBold
             }
         }
 
@@ -1843,6 +1805,14 @@ FocusScope {
         Row {
             id: chipRow
             visible: root.emptyDesktops.length > 0 && root.chipsShown
+            opacity: root.chipsReady ? 1 : 0
+            scale: root.chipsReady ? 1 : 0.92
+            Behavior on opacity {
+                NumberAnimation { duration: 120 }
+            }
+            Behavior on scale {
+                NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+            }
             readonly property real avail: root.screenW - 2 * root.outerPad
             x: root.outerPad + (avail - width) / 2
             y: root.outerPad + (root.topBand - height) / 2
@@ -1906,6 +1876,10 @@ FocusScope {
             y: root.outerPad
             spacing: 2 * root.spacing
 
+            HoverHandler {
+                onHoveredChanged: root.mediaHover = hovered
+            }
+
             Repeater {
                 model: mediaModel
                 Rectangle {
@@ -1941,8 +1915,11 @@ FocusScope {
 
                     width: Math.min(260, (root.screenW * 0.4 - (mediaModel.count - 1) * mediaStrip.spacing) / Math.max(1, mediaModel.count))
                     height: root.mediaCardHeight
-                    radius: 6
-                    color: root.alpha(root.panelText, 0.08)
+                    radius: 8
+                    // Frosted: the panel already blurs the desktop behind it.
+                    color: root.alpha(root.panelColor, 0.55)
+                    border.width: 1
+                    border.color: Qt.rgba(1, 1, 1, 0.12)
                     clip: true
 
                     // Clicking the card (title, art, anywhere but a control)
@@ -2226,12 +2203,23 @@ FocusScope {
                 onClicked: root.requestRules(root.menuWindow, false)
             }
             MenuItem { separator: true }
+            // A window on several desktops appears here as copies. Pinning it
+            // back to this one replaces the all-desktops toggle then.
             MenuItem {
-                text: "Show on all desktops"
-                checked: root.menuWindow !== null && root.menuWindow.onAllDesktops
+                visible: root.menuWindow !== null && (root.menuWindow.onAllDesktops || root.menuWindow.desktops.length > 1)
+                text: "Show only in current desktop"
                 onClicked: {
                     const w = root.menuWindow;
-                    w.onAllDesktops = !w.onAllDesktops;
+                    w.onAllDesktops = false;
+                    w.desktops = [root.currentDesktop];
+                    root.closeMenu();
+                }
+            }
+            MenuItem {
+                visible: root.menuWindow !== null && !root.menuWindow.onAllDesktops && root.menuWindow.desktops.length <= 1
+                text: "Show on all desktops"
+                onClicked: {
+                    root.menuWindow.onAllDesktops = true;
                     root.closeMenu();
                 }
             }
