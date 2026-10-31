@@ -1106,6 +1106,100 @@ FocusScope {
         switchTo(desktops[((i + delta) % n + n) % n]);
     }
 
+    // Collect every visible window in the overview together with its center in
+    // root (screen-local) coordinates, so keyboard navigation can pick the
+    // nearest neighbour in a given direction.
+    function windowCenters() {
+        const wins = KWinComponents.Workspace.stackingOrder;
+        const result = [];
+        for (let j = 0; j < wins.length; j++) {
+            const w = wins[j];
+            if (w.skipPager || w.onScreenDisplay || w.notification || w.criticalNotification || w.minimized || w.hidden) {
+                continue;
+            }
+            if (w.output === null || w.output.name !== root.targetScreen.name) {
+                continue;
+            }
+            if (w.pid <= 0 && w.resourceClass === "") {
+                continue;
+            }
+            if (w.activities.length > 0 && w.activities.indexOf(root.activity) === -1) {
+                continue;
+            }
+            const desktop = (w.desktops && w.desktops.length > 0) ? w.desktops[0] : KWinComponents.Workspace.currentDesktop;
+            let g = null;
+            for (let i = 0; i < root.groups.length; i++) {
+                const gg = root.groups[i];
+                if (gg && gg.occupied && gg.w > 0 && desktop !== null && gg.desktop.x11DesktopNumber === desktop.x11DesktopNumber) {
+                    g = gg;
+                    break;
+                }
+            }
+            if (g === null) {
+                continue;
+            }
+            const cx = g.x + (w.x + w.width / 2 - root.screenX) * g.s;
+            const cy = g.y + (w.y + w.height / 2 - root.screenY) * g.s;
+            result.push({ window: w, center: Qt.point(cx, cy), group: g });
+        }
+        return result;
+    }
+
+    // Move keyboard focus to the nearest window in the given direction
+    // (dx,dy in {-1,0,1}) from the currently focused/hovered window, warping
+    // the pointer to that window's centre. No wrap; clamps at the edge.
+    function focusWindowDirection(dx, dy) {
+        const list = root.windowCenters();
+        if (list.length === 0) {
+            return;
+        }
+        let cur = null;
+        if (root.cursorWindow !== null) {
+            for (const e of list) {
+                if (String(e.window.internalId) === String(root.cursorWindow.internalId)) {
+                    cur = e;
+                    break;
+                }
+            }
+        }
+        if (cur === null) {
+            cur = list[0];
+        }
+        // Find the current entry's index to start from.
+        let best = null;
+        let bestScore = Infinity;
+        for (const e of list) {
+            if (e === cur) {
+                continue;
+            }
+            const px = e.center.x - cur.center.x;
+            const py = e.center.y - cur.center.y;
+            const primary = dx !== 0 ? px * dx : py * dy;
+            if (primary <= 0) {
+                continue;
+            }
+            const secondary = dx !== 0 ? py : px;
+            const score = primary + 0.5 * Math.abs(secondary);
+            if (score < bestScore) {
+                bestScore = score;
+                best = e;
+            }
+        }
+        if (best === null) {
+            return; // clamp at edge
+        }
+        root.cursorWindow = best.window;
+        root.pointerMoved = true;
+        if (best.group.desktop !== null && best.group.desktop !== KWinComponents.Workspace.currentDesktop) {
+            root.switchTo(best.group.desktop);
+        }
+        const cx = best.center.x;
+        const cy = best.center.y;
+        root.mouseX = cx;
+        root.mouseY = cy;
+        root.warpPointer(Qt.point(root.screenX + cx, root.screenY + cy), 0);
+    }
+
     Keys.onPressed: (event) => {
         let target = -1;
         switch (event.key) {
@@ -1117,14 +1211,26 @@ FocusScope {
             event.accepted = true;
             return;
         case Qt.Key_Left:
+            root.focusWindowDirection(-1, 0);
+            event.accepted = true;
+            return;
+        case Qt.Key_Right:
+            root.focusWindowDirection(1, 0);
+            event.accepted = true;
+            return;
         case Qt.Key_Up:
+            root.focusWindowDirection(0, -1);
+            event.accepted = true;
+            return;
+        case Qt.Key_Down:
+            root.focusWindowDirection(0, 1);
+            event.accepted = true;
+            return;
         case Qt.Key_H:
         case Qt.Key_K:
             root.stepDesktop(-1);
             event.accepted = true;
             return;
-        case Qt.Key_Right:
-        case Qt.Key_Down:
         case Qt.Key_L:
         case Qt.Key_J:
             root.stepDesktop(1);
@@ -1678,6 +1784,15 @@ FocusScope {
     Rectangle {
         anchors.fill: parent
         color: root.backdropMode === 3 ? root.panelColor : "black"
+    }
+
+    Text {
+        anchors.centerIn: parent
+        visible: root.groups.length > 0 && root.groups.every(function(g){ return !g.occupied; })
+        text: "There are no windows in any desktop."
+        color: "white"
+        font.pointSize: 20
+        z: 1000
     }
 
     Item {
