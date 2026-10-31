@@ -1625,9 +1625,10 @@ var Config = class {
     this.tilePopups = rc("TilePopups", false);
     this.windowDragPolicy = rc("WindowDragPolicy", 1 /* Tiled */);
     this.dragRetilePoint = rc("DragRetilePoint", 0 /* Mouse */);
-    // 0 keeps KWin's natural drag size, 1 keeps the tiled size, 2 shrinks it.
-    this.dragWindowSize = rc("DragWindowSize", 0);
-    this.dragWindowSizePercent = rc("DragWindowSizePercent", 50);
+    // 0 keeps KWin's natural drag size, 1 scales the tiled size by the custom
+    // percent (100% is exactly the tiled size).
+    this.dragWindowSize = rc("DragWindowSize", 1);
+    this.dragWindowSizePercent = rc("DragWindowSizePercent", 100);
     // 0 leaves placement to KWin; 1..9 are the cells of a 3x3 output grid.
     this.floatingSpawnPoint = rc("FloatingSpawnPoint", 0);
     this.mouseFollowsFocus = rc("MouseFollowsFocus", false);
@@ -1854,7 +1855,8 @@ var WindowHandler = class {
     });
   }
   // A dragged window can be shown at the tiled size or a scaled-down version
-  // so it is easy to drop between tiles. Natural KWin behaviour is the default.
+  // so it is easy to drop between tiles. Natural KWin behaviour is the other
+  // option; the custom percent defaults to 100%, which is the tiled size.
   applyDragSize() {
     if (this.dragSizeApplied) {
       return;
@@ -1862,16 +1864,12 @@ var WindowHandler = class {
     this.dragSizeApplied = true;
     const mode = config().dragWindowSize;
     const source = this.tiledRect;
-    if (mode !== 1 && mode !== 2 || source === null || source.width <= 0 || source.height <= 0) {
+    if (mode < 1 || source === null || source.width <= 0 || source.height <= 0) {
       return;
     }
-    let width = source.width;
-    let height = source.height;
-    if (mode === 2) {
-      const percent = Math.min(100, Math.max(10, Number(config().dragWindowSizePercent) || 50));
-      width = Math.round(width * percent / 100);
-      height = Math.round(height * percent / 100);
-    }
+    const percent = Math.min(100, Math.max(10, Number(config().dragWindowSizePercent) || 100));
+    const width = Math.round(source.width * percent / 100);
+    const height = Math.round(source.height * percent / 100);
     const frame = this.window.frameGeometry;
     const cursor = this.workspace.cursorPos;
     // Keep the cursor at the same spot of the window so it does not jump
