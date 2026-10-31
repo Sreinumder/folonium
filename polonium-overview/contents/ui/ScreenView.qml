@@ -273,7 +273,9 @@ FocusScope {
                 root.dropTargetDesktop = null;
                 statesCall.call();
                 root.rebuildGroups();
-                root.transposeOpenPointer();
+                if (root.cfg.TransposeIn) {
+                    root.transposeOpenPointer();
+                }
             } else {
                 afterDropTimer.stop();
                 root.dropTargetDesktop = null;
@@ -282,7 +284,7 @@ FocusScope {
                 if (!root.desktopPicked && root.originDesktop !== null) {
                     root.switchTo(root.originDesktop);
                 }
-                if (!root.desktopPicked && root.openTransposed) {
+                if (!root.desktopPicked && root.openTransposed && root.cfg.TransposeOut) {
                     root.warpPointer(root.openPointer, 150);
                 }
                 root.originDesktop = null;
@@ -1096,6 +1098,70 @@ FocusScope {
         effect.deactivate();
     }
 
+    // Move keyboard focus to the nearest DESKTOP (not window) in the given
+    // direction, based on desktop positions in the overview. No wrap-around.
+    function focusDesktopDirection(dx, dy) {
+        // Build list of available desktops with their centres.
+        const list = [];
+        for (let i = 0; i < root.groups.length; i++) {
+            const g = root.groups[i];
+            const d = (g && g.desktop) ? g.desktop : (root.desktops[i] !== undefined ? root.desktops[i] : null);
+            if (d === null) {
+                continue;
+            }
+            if (!(g && g.occupied && g.w > 0 && g.h > 0)) {
+                // ignore empty desktops completely
+                continue;
+            }
+            const cx = g.x + g.w / 2;
+            const cy = g.y + g.h / 2;
+            list.push({ desktop: d, center: Qt.point(cx, cy) });
+        }
+        if (list.length === 0) {
+            return;
+        }
+        // current
+        let cur = null;
+        for (const e of list) {
+            if (e.desktop === root.currentDesktop || (e.desktop.x11DesktopNumber !== undefined && root.currentDesktop !== null && e.desktop.x11DesktopNumber === root.currentDesktop.x11DesktopNumber)) {
+                cur = e;
+                break;
+            }
+        }
+        if (cur === null) {
+            cur = list[0];
+        }
+        let best = null;
+        let bestScore = Infinity;
+        for (const e of list) {
+            if (e === cur) {
+                continue;
+            }
+            const px = e.center.x - cur.center.x;
+            const py = e.center.y - cur.center.y;
+            const primary = dx !== 0 ? px * dx : py * dy;
+            if (primary <= 0) {
+                continue;
+            }
+            const secondary = dx !== 0 ? py : px;
+            const score = primary + 0.5 * Math.abs(secondary);
+            if (score < bestScore) {
+                bestScore = score;
+                best = e;
+            }
+        }
+        if (best === null) {
+            return; // clamp at edge
+        }
+        root.desktopPicked = true;
+        root.switchTo(best.desktop);
+        const cx = best.center.x;
+        const cy = best.center.y;
+        root.mouseX = cx;
+        root.mouseY = cy;
+        root.warpPointer(Qt.point(root.screenX + cx, root.screenY + cy), 0);
+    }
+
     function stepDesktop(delta) {
         const n = desktops.length;
         if (n < 2) {
@@ -1211,19 +1277,19 @@ FocusScope {
             event.accepted = true;
             return;
         case Qt.Key_Left:
-            root.focusWindowDirection(-1, 0);
+            root.focusDesktopDirection(-1, 0);
             event.accepted = true;
             return;
         case Qt.Key_Right:
-            root.focusWindowDirection(1, 0);
+            root.focusDesktopDirection(1, 0);
             event.accepted = true;
             return;
         case Qt.Key_Up:
-            root.focusWindowDirection(0, -1);
+            root.focusDesktopDirection(0, -1);
             event.accepted = true;
             return;
         case Qt.Key_Down:
-            root.focusWindowDirection(0, 1);
+            root.focusDesktopDirection(0, 1);
             event.accepted = true;
             return;
         case Qt.Key_H:

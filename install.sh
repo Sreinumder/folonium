@@ -127,10 +127,24 @@ reload_kwin() {
     qdbus_cmd org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect betteroverview >/dev/null 2>&1 || true
 }
 
+clear_polonium_cache() {
+    # Clear polonium saver cache/state only; keep settings.json and kwinrc.
+    rm -rf -- "$HOME/.cache/polonium" "$HOME/.cache/polonium-saver" "$HOME/.cache/polonium-saver-state" 2>/dev/null || true
+    rm -rf -- "$HOME/.local/share/polonium-saver/cache" "$HOME/.local/share/polonium/cache" 2>/dev/null || true
+    # Remove any stray cache files under ~/.config/polonium but keep settings.json
+    if [ -d "$HOME/.config/polonium" ]; then
+        find "$HOME/.config/polonium" -mindepth 1 -maxdepth 1 ! -name settings.json -exec rm -rf -- {} + 2>/dev/null || true
+    fi
+    if [ -d "$HOME/.config/polonium-saver" ]; then
+        find "$HOME/.config/polonium-saver" -mindepth 1 -maxdepth 1 ! -name settings.json -exec rm -rf -- {} + 2>/dev/null || true
+    fi
+}
+
 install_all() {
     check_sources
     install_script
     install_effect
+    clear_polonium_cache
     install_saver
     set_plugin poloniumEnabled true
     set_plugin betteroverviewEnabled true
@@ -157,6 +171,7 @@ uninstall_all() {
     rm -rf -- "$SCRIPT_DIR" "$EFFECT_DIR" "$SAVER_DIR"
     rm -f -- "$SERVICE_FILE" "$SETTINGS_APP"
 
+    clear_polonium_cache
     say "Done. Your settings in ~/.config/polonium/settings.json and kwinrc were kept."
 }
 

@@ -428,6 +428,20 @@
     </widget>
    </item>
    <item row="18" column="1">
+    <widget class="QCheckBox" name="kcfg_TransposeIn">
+     <property name="text">
+      <string>Transpose cursor into overview on open</string>
+     </property>
+    </widget>
+   </item>
+   <item row="19" column="1">
+    <widget class="QCheckBox" name="kcfg_TransposeOut">
+     <property name="text">
+      <string>Restore cursor position on close</string>
+     </property>
+    </widget>
+   </item>
+   <item row="18" column="1">
     <widget class="QLabel" name="label_HotCorner">
      <property name="text">
       <string>Bind the shortcut under System Settings → Shortcuts → Window Management → "Toggle Better Overview". A hot corner can be assigned under Screen Edges.</string>

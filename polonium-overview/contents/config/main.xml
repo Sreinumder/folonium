@@ -96,6 +96,12 @@
                 <choice name="Text" />
             </choices>
         </entry>
+        <entry name="TransposeIn" type="Bool">
+            <default>true</default>
+        </entry>
+        <entry name="TransposeOut" type="Bool">
+            <default>true</default>
+        </entry>
         <entry name="BorderActivate" type="IntList" />
         <entry name="TouchBorderActivate" type="IntList" />
     </group>
