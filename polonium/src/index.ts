@@ -1366,9 +1366,11 @@ var CustomEngine = class {
   }
   // The shape on screen, written in the DSL.
   shapeText() {
-    if (this.settings.monocle) {
-      return "";
-    }
+    return this.settings.monocle ? "" : this.tiledShapeText();
+  }
+  // The shape monocle would apply if it were switched off, so the overview can
+  // preview what a desktop is about to become.
+  tiledShapeText() {
     const count = this.windows.length;
     if (count === 0) {
       return "";
@@ -1566,6 +1568,9 @@ var TilingEngine = class {
   }
   shapeText() {
     return typeof this.engine.shapeText === "function" ? this.engine.shapeText() : "";
+  }
+  tiledShapeText() {
+    return typeof this.engine.tiledShapeText === "function" ? this.engine.tiledShapeText() : this.shapeText();
   }
   layoutCount() {
     return typeof this.engine.layoutCount === "function" ? this.engine.layoutCount() : 1;
@@ -3212,7 +3217,8 @@ var Driver = class {
   stateJson() {
     return JSON.stringify({
       layout: this.shapeText(),
-      mono: this.isMonocle()
+      mono: this.isMonocle(),
+      shape: this.tiledShapeText()
     });
   }
   resetTilingEngine() {
@@ -3498,6 +3504,9 @@ var Driver = class {
   shapeText() {
     return this.tilingEngine.shapeText();
   }
+  tiledShapeText() {
+    return this.tilingEngine.tiledShapeText();
+  }
   layoutCount() {
     return this.tilingEngine.layoutCount();
   }
@@ -3751,6 +3760,39 @@ var Controller = class {
       const tile = b.tile;
       if (tile === null) return;
       this.queueEvent({ t: "placeWindow", window: a, tile });
+      return;
+    }
+    // The overview cannot move the real pointer, so focus the window it was
+    // asked for and let KWin's MoveMouseToFocus shortcut centre the cursor on
+    // it. Runs after the effect closed because the saver is polled.
+    if (request.t === "warp") {
+      const target = this.workspace.stackingOrder.find(
+        (w) => String(w.internalId) === request.id
+      );
+      if (target === undefined) return;
+      if (target.minimized) target.minimized = false;
+      this.workspace.activeWindow = target;
+      this.qmlObjects.dbus?.moveMouseToFocus().call();
+      return;
+    }
+    // A desktop over the overview's monocle limit is previewed tiled; clicking
+    // one of its windows switches it back to a tiled layout.
+    if (request.t === "tiled") {
+      const target = this.workspace.stackingOrder.find(
+        (w) => String(w.internalId) === request.id
+      );
+      if (target === undefined) return;
+      const display = Display.generateWindow(target).next().value;
+      if (display === undefined) return;
+      if (this.getDriver(display) === undefined) return;
+      this.queueEvent({
+        t: "changeEngine",
+        display: display,
+        engineSettings: { monocle: false }
+      });
+      if (target.minimized) target.minimized = false;
+      this.workspace.activeWindow = target;
+      this.qmlObjects.dbus?.moveMouseToFocus().call();
     }
   }
   queueEvent(ev, forcePush = false) {
