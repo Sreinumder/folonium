@@ -102,6 +102,38 @@ in its settings).
 single pending command (swap/move/focus) from the overview effect to the
 tiling script, which polls it.
 
+## Layouts
+
+Folonium tiles with one engine, and the engine takes its layouts as text. A
+layout is written in a small slicing grammar:
+
+- `[ ]` puts windows side by side in columns.
+- `/ /` stacks them in rows.
+- A bare number is that many windows stacked along the other axis.
+
+So `[1 2]` is one window beside a column of two, and `/1 2/` is the same shape
+rotated. The window count of a layout is the sum of its numbers.
+
+Each KCM tab is a **layout set**. Write one or more layouts in a tab, separated
+by spaces or newlines, so a single tab can cover several window counts. L1 is
+the default set; pick another set from the layout menu. The largest layout in
+the set that fits the open windows is used, and extra windows float. If no
+layout in the set fits, all windows float.
+
+**Split ratios** are shared by every layout and live in their own field above
+the tabs: whitespace-separated options such as `2:1 3:2 1:1 2:3 1:2` for
+two-child splits and `1:1:1 2:1:1 1:2:1 1:1:2` for three-child splits.
+Horizontal and vertical splits keep separate selections; cycle them from the
+layout menu or their shortcuts.
+
+Rotations and reflections of the same layout are not duplicated. A layout tiles
+as many windows as it has slots; any extra windows float. Per-display settings
+such as mirror and rotate are in the layout menu, and the KWin row there
+switches that display to KWin's own tiling and back.
+
+Note that layouts and ratios are parsed by **separate** fields, not mixed
+together — see the next section.
+
 ## Notes
 
 - Plasma 6 Wayland only; X11 is not supported.
