@@ -43,6 +43,7 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
 import time
 from collections import deque
 
@@ -77,6 +78,7 @@ GLOBAL_KEYS = {
 
 MPRIS_PREFIX = "org.mpris.MediaPlayer2"
 MPRIS_PATH = "/org/mpris/MediaPlayer2"
+MPRIS_IFACE = "org.mpris.MediaPlayer2"
 PLAYER_IFACE = "org.mpris.MediaPlayer2.Player"
 PROPS_IFACE = "org.freedesktop.DBus.Properties"
 STATE_LIMIT = 4096
@@ -90,6 +92,26 @@ def variant_value(props, key, default=None):
 
 def log(msg):
     print(f"polonium-saver: {msg}", flush=True)
+
+
+def pointer_pos():
+    """The real pointer in screen coordinates, or None if kdotool is missing."""
+    try:
+        out = subprocess.run(
+            ["kdotool", "getmouselocation"],
+            capture_output=True,
+            text=True,
+            timeout=1,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    x = y = None
+    for part in out.split():
+        if part.startswith("x:"):
+            x = int(part[2:] or 0)
+        elif part.startswith("y:"):
+            y = int(part[2:] or 0)
+    return None if x is None or y is None else (x, y)
 
 
 class Store:
@@ -226,6 +248,44 @@ class Media:
             player, MPRIS_PATH, PROPS_IFACE, "GetAll", "s", (PLAYER_IFACE,)
         )[0]
 
+    def desktop_entry(self, player):
+        """The .desktop name some players publish, used to find their window."""
+        try:
+            reply = self.call(
+                player,
+                MPRIS_PATH,
+                PROPS_IFACE,
+                "Get",
+                "ss",
+                (MPRIS_IFACE, "DesktopEntry"),
+            )
+        except Exception:
+            return ""
+        value = reply[0]
+        if isinstance(value, tuple):
+            value = value[1]
+        return str(value or "")
+
+    @staticmethod
+    def icon_name(entry):
+        """MPRIS gives the .desktop name; the icon usually lives inside it."""
+        if not entry:
+            return ""
+        for base in (
+            "~/.local/share/applications",
+            "/usr/local/share/applications",
+            "/usr/share/applications",
+        ):
+            path = os.path.join(os.path.expanduser(base), entry + ".desktop")
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    for line in fh:
+                        if line.startswith("Icon="):
+                            return line[len("Icon=") :].strip()
+            except OSError:
+                continue
+        return entry
+
     def snapshot(self):
         players = []
         names = self.call(DBUS_IFACE, DBUS_PATH, DBUS_IFACE, "ListNames")[0]
@@ -247,6 +307,7 @@ class Media:
                 artist = artists
             else:
                 artist = ", ".join(a for a in artists if a)
+            entry = self.desktop_entry(name)
             players.append(
                 {
                     "player": name,
@@ -270,6 +331,9 @@ class Media:
                     # plasma-browser-integration reports the browser's pid, and
                     # that is what the overview matches against open windows.
                     "pid": int(variant_value(metadata, "kde:pid", 0) or 0),
+                    # Used when the pid does not lead to the player's window.
+                    "desktopEntry": entry,
+                    "icon": self.icon_name(entry),
                 }
             )
         # Firefox and plasma-browser-integration both publish the same track;
@@ -281,8 +345,13 @@ class Media:
         out = []
         seen = set()
         for player in players:
-            if player["url"] or player["title"]:
-                key = player["url"] or (player["title"], player["artist"])
+            # Two players exposing one playback (Firefox and the browser
+            # integration) answer the same Seek; key on the track, not the url,
+            # so only one card owns it.
+            if player["title"]:
+                key = (player["title"], player["artist"])
+            elif player["url"]:
+                key = player["url"]
             else:
                 key = player["player"]
             if key in seen:
@@ -367,8 +436,13 @@ class Media:
                 (PLAYER_IFACE, "Rate", ("d", float(value))),
             )
         elif action == "raise":
-            # MPRIS Raise brings the player's window to front
-            self.call(player, MPRIS_PATH, PLAYER_IFACE, "Raise")
+            # MPRIS Raise is on the root interface, not the Player one. Some
+            # players do not implement it, so the failure is not fatal: the
+            # overview also activates the player's window by its app id.
+            try:
+                self.call(player, MPRIS_PATH, MPRIS_IFACE, "Raise")
+            except Exception as exc:
+                log(f"media: Raise failed on {player}: {exc!r}")
         else:
             raise LookupError(f"no such media action: {action}")
 
@@ -424,6 +498,9 @@ class Saver:
             return ("", ())
         if member == "GetCursorPos":
             return ("ii", (self.cursor_x, self.cursor_y))
+        if member == "WarpPointer":
+            self.warp_pointer(args[0], args[1])
+            return ("", ())
         if member == "Introspect":
             return ("s", (INTROSPECTION_XML,))
         if member == "Ping":
@@ -569,6 +646,40 @@ class Saver:
         except (ValueError, TypeError):
             pass
 
+    def warp_pointer(self, x, y):
+        """Move the real pointer, off the D-Bus loop so polling keeps going.
+
+        The overview hands us the screen point a click was transposed to.
+        ydotool only moves relatively, so read the pointer back and step
+        towards the target; a big single step would be mouse-accelerated.
+        """
+        threading.Thread(
+            target=self._warp_pointer, args=(int(x), int(y)), daemon=True
+        ).start()
+
+    def _warp_pointer(self, x, y):
+        # Let the overview finish closing before the pointer jumps.
+        time.sleep(0.15)
+        for _ in range(4):
+            pos = pointer_pos()
+            if pos is None:
+                log("warp: kdotool getmouselocation failed")
+                return
+            dx, dy = x - pos[0], y - pos[1]
+            if abs(dx) <= 1 and abs(dy) <= 1:
+                return
+            try:
+                subprocess.run(
+                    ["ydotool", "mousemove", "--", str(dx), str(dy)],
+                    check=True,
+                    timeout=1,
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                log(f"warp: ydotool failed: {exc!r}")
+                return
+            time.sleep(0.05)
+        log(f"warp: pointer did not reach {x},{y}")
+
 
 INTROSPECTION_XML = (
     '<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN" '
@@ -623,6 +734,10 @@ INTROSPECTION_XML = (
     '    <method name="GetCursorPos">\n'
     '      <arg name="x" type="i" direction="out"/>\n'
     '      <arg name="y" type="i" direction="out"/>\n'
+    "    </method>\n"
+    '    <method name="WarpPointer">\n'
+    '      <arg name="x" type="i" direction="in"/>\n'
+    '      <arg name="y" type="i" direction="in"/>\n'
     "    </method>\n"
     "  </interface>\n"
     "</node>\n"

@@ -95,13 +95,10 @@ FocusScope {
     readonly property Item backdropSource: backdropMode === 1 ? backdrop : (backdropMode === 2 ? wallpaperBg : null)
     readonly property bool backdropBlur: backdropSource !== null
 
-    // The media strip is collapsed by default; click the toggle button to expand.
-    // It shares the top band with the empty-desktop chips.
-    readonly property int mediaCardHeight: 90
-    readonly property int mediaSpace: root.mediaExpanded && mediaModel.count > 0 ? mediaCardHeight + 2 * spacing : 0
-    readonly property int topBand: Math.max(root.chipsShown ? root.chipRowH : 0, root.mediaSpace)
-    onMediaSpaceChanged: rebuildGroups()
-    property bool mediaExpanded: false
+    // Now playing sits in the top-right corner, small enough not to push the
+    // grid down. The empty-desktop chips reserve the top band when they show.
+    readonly property int mediaCardHeight: 72
+    readonly property int topBand: root.chipsShown ? root.chipRowH : 0
     property int mediaTick: 0
     property real mediaAt: 0
 
@@ -888,11 +885,26 @@ FocusScope {
     }
 
     // The player's own window may be open; browsers report the browser pid.
-    // Nothing open: hand the track to the desktop instead.
-    function raisePlayer(player, pid, url) {
+    // Nothing open: hand the track to the desktop instead. The class check is
+    // the effect's version of the kdotool fallback in the mpris_dbus script.
+    function raisePlayer(player, pid, desktopEntry, url) {
+        root.mediaCommand(player, "raise");
+        const entry = String(desktopEntry || "").toLowerCase();
         let target = null;
         for (const w of KWinComponents.Workspace.stackingOrder) {
-            if (pid > 0 && w.pid === pid && !w.minimized && !w.skipPager) {
+            if (w.minimized || w.skipPager) {
+                continue;
+            }
+            if (pid > 0 && w.pid === pid) {
+                target = w;
+                break;
+            }
+            if (entry.length === 0) {
+                continue;
+            }
+            const cls = String(w.resourceClass || "").toLowerCase();
+            const desk = String(w.desktopFileName || "").toLowerCase();
+            if (cls === entry || desk === entry || desk === entry + ".desktop") {
                 target = w;
                 break;
             }
@@ -1000,14 +1012,23 @@ FocusScope {
         }
     }
 
-    // The effect cannot move the real pointer; polonium asks KWin's
-    // MoveMouseToFocus shortcut to centre the cursor on the focused window.
-    function requestWarp(window) {
-        requestCall.arguments = [JSON.stringify({ t: "warp", id: String(window.internalId) })];
-        requestCall.call();
+    // The effect cannot move the real pointer; the saver runs ydotool for it.
+    KWinComponents.DBusCall {
+        id: warpCall
+        service: "xyz.vaughanm.polonium"
+        path: "/saver"
+        dbusInterface: "xyz.vaughanm.polonium"
+        method: "WarpPointer"
+    }
+    // p is in screen coordinates: the click transposed off the tile.
+    function warpPointer(p) {
+        const x = Math.max(root.screenX, Math.min(root.screenX + root.screenW - 1, Math.round(p.x)));
+        const y = Math.max(root.screenY, Math.min(root.screenY + root.screenH - 1, Math.round(p.y)));
+        warpCall.arguments = [x, y];
+        warpCall.call();
     }
 
-    function activateWindow(window, desktop, warp) {
+    function activateWindow(window, desktop, at) {
         if (desktop === undefined && window.desktops && window.desktops.length === 1) {
             desktop = window.desktops[0];
         }
@@ -1019,21 +1040,24 @@ FocusScope {
             window.minimized = false;
         }
         KWinComponents.Workspace.activeWindow = window;
-        if (warp === true) {
-            root.requestWarp(window);
+        if (at !== undefined && at !== null) {
+            root.warpPointer(at);
         }
         effect.deactivate();
     }
 
     // A window on a desktop over the monocle limit: switching to the previewed
     // tiled layout and focusing it are one request to polonium.
-    function activateTiled(window, desktop) {
+    function activateTiled(window, desktop, at) {
         root.desktopPicked = true;
         if (desktop !== undefined) {
             root.switchTo(desktop);
         }
         requestCall.arguments = [JSON.stringify({ t: "tiled", id: String(window.internalId) })];
         requestCall.call();
+        if (at !== undefined && at !== null) {
+            root.warpPointer(at);
+        }
         effect.deactivate();
     }
 
@@ -1137,14 +1161,14 @@ FocusScope {
         property bool available: true
         signal clicked()
 
-        width: 20
-        height: 20
+        width: 16
+        height: 16
         visible: available
 
         Kirigami.Icon {
             anchors.centerIn: parent
-            width: 14
-            height: 14
+            width: 11
+            height: 11
             source: mb.icon
             color: mb.active ? root.accentColor : root.panelText
         }
@@ -1434,10 +1458,26 @@ FocusScope {
                     return;
                 }
                 if (mouse.button === Qt.LeftButton) {
+                    // Transpose the click into screen coordinates. A normal
+                    // tile is the whole screen scaled down, so the click's
+                    // fraction is the same point on the desktop; a monocle
+                    // cell is one whole window, so it maps from its own top
+                    // corner. Minimized chips sit outside the preview.
+                    let at = null;
+                    if (!win.mini) {
+                        const geo = win.tile.screen.geometry;
+                        if (win.inCell && !win.inPreview) {
+                            at = Qt.point(geo.x + mouse.x / win.width * geo.width,
+                                          geo.y + mouse.y / win.height * geo.height);
+                        } else {
+                            const p = win.mapToItem(win.tile, mouse.x, mouse.y);
+                            at = Qt.point(geo.x + p.x / win.s, geo.y + p.y / win.s);
+                        }
+                    }
                     if (win.inPreview) {
-                        root.activateTiled(win.window, win.tile.desktop);
+                        root.activateTiled(win.window, win.tile.desktop, at);
                     } else {
-                        root.activateWindow(win.window, win.tile.desktop, true);
+                        root.activateWindow(win.window, win.tile.desktop, at);
                     }
                 } else if (mouse.button === Qt.MiddleButton) {
                     win.window.closeWindow();
@@ -1745,8 +1785,7 @@ FocusScope {
         Row {
             id: chipRow
             visible: root.emptyDesktops.length > 0 && root.chipsShown
-            // Leave the media strip its half of the band when it is open.
-            readonly property real avail: root.screenW - 2 * root.outerPad - (root.mediaSpace > 0 ? mediaStrip.width + root.outerPad : 0)
+            readonly property real avail: root.screenW - 2 * root.outerPad
             x: root.outerPad + (avail - width) / 2
             y: root.outerPad + (root.topBand - height) / 2
             spacing: root.groupGap
@@ -1799,10 +1838,9 @@ FocusScope {
             }
         }
 
-        // Now playing, beside the empty-desktop chips in the top band. Fed by
-        // the saver once a second; the bar interpolates between polls so it
-        // moves while the track plays. The toggle stays reachable when
-        // collapsed.
+        // Now playing, always shown in the top-right corner so it never moves
+        // the grid. Fed by the saver once a second; the bar interpolates
+        // between polls so it moves while the track plays.
         Row {
             id: mediaStrip
             anchors.right: parent.right
@@ -1810,33 +1848,10 @@ FocusScope {
             y: root.outerPad
             spacing: 2 * root.spacing
 
-            // Media toggle button (show/hide media panel)
-            Rectangle {
-                id: mediaToggleBtn
-                width: 32
-                height: 32
-                radius: 16
-                color: root.alpha(root.panelColor, 0.8)
-                border.width: 1
-                border.color: Qt.rgba(1, 1, 1, 0.2)
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: root.mediaExpanded = !root.mediaExpanded
-                }
-                Kirigami.Icon {
-                    anchors.centerIn: parent
-                    width: 16
-                    height: 16
-                    source: root.mediaExpanded ? "view-list-tree" : "view-list-details"
-                    color: root.panelText
-                }
-            }
-
             Repeater {
                 model: mediaModel
                 Rectangle {
                     id: mediaCard
-                    visible: root.mediaExpanded
                     required property int index
                     required property string player
                     required property string app
@@ -1850,6 +1865,8 @@ FocusScope {
                     required property real position
                     required property real length
                     required property int pid
+                    required property string desktopEntry
+                    required property string icon
                     required property bool canSeek
                     required property bool canControl
                     required property bool canNext
@@ -1864,44 +1881,62 @@ FocusScope {
                         return Math.min(length, position + elapsed);
                     }
 
-                    width: Math.min(320, (root.screenW * 0.5 - (mediaModel.count - 1) * mediaStrip.spacing) / Math.max(1, mediaModel.count))
+                    width: Math.min(260, (root.screenW * 0.4 - (mediaModel.count - 1) * mediaStrip.spacing) / Math.max(1, mediaModel.count))
                     height: root.mediaCardHeight
                     radius: 6
                     color: root.alpha(root.panelText, 0.08)
                     clip: true
 
-                    // Clicking anywhere brings the player's window forward via MPRIS Raise.
+                    // Clicking the card (title, art, anywhere but a control)
+                    // raises the player, like mpris_dbus Raise.
                     MouseArea {
                         anchors.fill: parent
-                        onClicked: root.mediaCommand(mediaCard.player, "raise", "")
+                        onClicked: root.raisePlayer(mediaCard.player, mediaCard.pid, mediaCard.desktopEntry, mediaCard.url)
                     }
 
                     Image {
                         id: cover
                         visible: mediaCard.art.length > 0
-                        x: 12
-                        y: 12
-                        width: 100
-                        height: 100
+                        x: 6
+                        y: 6
+                        width: root.mediaCardHeight - 12
+                        height: width
                         source: mediaCard.art
                         fillMode: Image.PreserveAspectCrop
                         asynchronous: true
-                        sourceSize.width: 200
-                        sourceSize.height: 200
+                        sourceSize.width: 120
+                        sourceSize.height: 120
+                    }
+
+                    // The app's own icon, resolved from its .desktop file.
+                    Rectangle {
+                        visible: mediaCard.icon.length > 0
+                        x: cover.x + cover.width - 17
+                        y: cover.y + cover.height - 17
+                        width: 17
+                        height: 17
+                        radius: 9
+                        color: root.alpha(root.panelColor, 0.8)
+
+                        Kirigami.Icon {
+                            anchors.fill: parent
+                            anchors.margins: 2
+                            source: mediaCard.icon
+                        }
                     }
 
                     Column {
-                        x: cover.visible ? 124 : 12
-                        y: 12
-                        width: mediaCard.width - x - 12
-                        spacing: 4
+                        x: cover.visible ? cover.x + cover.width + 8 : 8
+                        y: 5
+                        width: mediaCard.width - x - 6
+                        spacing: 1
 
                         Text {
                             width: parent.width
                             text: mediaCard.title || mediaCard.player
                             elide: Text.ElideRight
                             color: root.panelText
-                            font.pixelSize: 14
+                            font.pixelSize: 12
                             font.weight: Font.DemiBold
                         }
 
@@ -1910,13 +1945,13 @@ FocusScope {
                             text: mediaCard.artist
                             elide: Text.ElideRight
                             color: root.alpha(root.panelText, 0.7)
-                            font.pixelSize: 11
+                            font.pixelSize: 10
                         }
 
                         // Line 3: progress/total | seekbar | rate
                         Item {
                             width: parent.width
-                            height: 20
+                            height: 16
 
                             Text {
                                 id: timeText
@@ -1924,7 +1959,7 @@ FocusScope {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: root.formatTime(mediaCard.shownPosition) + " / " + (mediaCard.length > 0 ? root.formatTime(mediaCard.length) : "--:--")
                                 color: root.alpha(root.panelText, 0.6)
-                                font.pixelSize: 10
+                                font.pixelSize: 9
                             }
 
                             Text {
@@ -1933,7 +1968,7 @@ FocusScope {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: Math.round(mediaCard.rate * 100) / 100 + "×"
                                 color: root.alpha(root.panelText, 0.8)
-                                font.pixelSize: 10
+                                font.pixelSize: 9
 
                                 MouseArea {
                                     anchors.fill: parent
@@ -1951,10 +1986,13 @@ FocusScope {
                                 anchors.verticalCenter: parent.verticalCenter
                                 height: 16
 
+                                // Where the pointer is along the bar, -1 when away.
+                                readonly property real at: seekMouse.containsMouse && mediaCard.length > 0 ? Math.max(0, Math.min(1, seekMouse.mouseX / width)) : -1
+
                                 Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: parent.width
-                                    height: 6
+                                    height: 5
                                     radius: 3
                                     color: root.alpha(root.panelText, 0.2)
                                 }
@@ -1962,13 +2000,46 @@ FocusScope {
                                 Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: mediaCard.length > 0 ? parent.width * Math.min(1, mediaCard.shownPosition / mediaCard.length) : 0
-                                    height: 6
+                                    height: 5
                                     radius: 3
                                     color: root.accentColor
                                 }
 
+                                // Hover preview: a marker and the time it points at.
+                                Rectangle {
+                                    visible: seekArea.at >= 0
+                                    x: Math.round(seekArea.at * (parent.width - width))
+                                    width: 2
+                                    height: 9
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    color: root.panelText
+                                }
+
+                                Rectangle {
+                                    id: seekTip
+                                    visible: seekArea.at >= 0
+                                    x: Math.max(0, Math.min(seekArea.width - width, seekArea.at * seekArea.width - width / 2))
+                                    y: -height - 3
+                                    width: tipText.implicitWidth + 8
+                                    height: 14
+                                    radius: 3
+                                    color: root.alpha(root.panelColor, 0.95)
+                                    border.width: 1
+                                    border.color: Qt.rgba(1, 1, 1, 0.2)
+
+                                    Text {
+                                        id: tipText
+                                        anchors.centerIn: parent
+                                        text: root.formatTime(seekArea.at * mediaCard.length)
+                                        color: root.panelText
+                                        font.pixelSize: 9
+                                    }
+                                }
+
                                 MouseArea {
+                                    id: seekMouse
                                     anchors.fill: parent
+                                    hoverEnabled: true
                                     enabled: mediaCard.canSeek && mediaCard.length > 0
                                     onClicked: (mouse) => root.mediaCommand(mediaCard.player, "seek", Math.round(mouse.x / width * mediaCard.length))
                                 }
@@ -1977,7 +2048,7 @@ FocusScope {
 
                         // Line 4: transport buttons
                         Row {
-                            spacing: 4
+                            spacing: 3
 
                             MediaButton {
                                 icon: "media-skip-backward"
