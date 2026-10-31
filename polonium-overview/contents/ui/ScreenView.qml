@@ -27,13 +27,19 @@ FocusScope {
     // full-screen overview: desktops are packed inside this margin
     readonly property int outerPad: 8
     readonly property int groupGap: 6
-    readonly property int chipRowH: 28
+    readonly property int chipRowH: 46
     readonly property string activity: KWinComponents.Workspace.currentActivity
+    // Monocle desktops up to this many windows become one cell per window;
+    // larger ones are previewed tiled and switch layout when clicked.
+    readonly property int monocleLimit: Math.max(1, cfg.MonocleLimit || 4)
 
-    // Dragging reveals the empty-desktop chips; the grid slides down so the
-    // chips sit in clear space instead of on top of the first desktops.
-    readonly property bool chipsShown: dragActive
+    // Dragging or reaching the top edge reveals the empty-desktop chips; the
+    // grid slides down so the chips sit in clear space instead of on top of
+    // the first desktops. The media strip shares that band.
+    readonly property bool topHover: mouseY < 56
+    readonly property bool chipsShown: dragActive || topHover
     onChipsShownChanged: rebuildGroups()
+    onMonocleLimitChanged: rebuildGroups()
 
     // Occupied desktops become groups packed to the largest common scale;
     // empty ones only get a numbered chip at the top.
@@ -61,6 +67,12 @@ FocusScope {
     // Mouse position for hover desktop switching
     property real mouseX: 0
     property real mouseY: 0
+    // Hover switching starts only after the pointer really moves, so opening
+    // the overview does not switch away from the desktop it opened on.
+    property bool pointerMoved: false
+    // The real desktop and window under the pointer when the overview opened.
+    property QtObject cursorDesktop: null
+    property QtObject cursorWindow: null
     // The desktop that was active when the overview opened; quitting without
     // a direct choice returns there.
     property QtObject originDesktop: null
@@ -84,8 +96,11 @@ FocusScope {
     readonly property bool backdropBlur: backdropSource !== null
 
     // The media strip is collapsed by default; click the toggle button to expand.
+    // It shares the top band with the empty-desktop chips.
     readonly property int mediaCardHeight: 90
-    readonly property int mediaSpace: root.mediaExpanded && mediaModel.count > 0 ? mediaCardHeight + spacing : 0
+    readonly property int mediaSpace: root.mediaExpanded && mediaModel.count > 0 ? mediaCardHeight + 2 * spacing : 0
+    readonly property int topBand: Math.max(root.chipsShown ? root.chipRowH : 0, root.mediaSpace)
+    onMediaSpaceChanged: rebuildGroups()
     property bool mediaExpanded: false
     property int mediaTick: 0
     property real mediaAt: 0
@@ -201,7 +216,7 @@ FocusScope {
         repeat: true
         running: true
         onTriggered: {
-            if (!effect.activated || root.dragActive || root.dropTargetDesktop !== null) return;
+            if (!effect.activated || !root.pointerMoved || root.dragActive || root.dropTargetDesktop !== null) return;
             const d = root.desktopAt(Qt.point(root.mouseX, root.mouseY));
             const n = d !== null ? d.x11DesktopNumber : 0;
             // One switch per hover; leaving all desktops re-arms it.
@@ -235,6 +250,8 @@ FocusScope {
                 // it really is instead of waiting for the first move.
                 root.mouseX = KWinComponents.Workspace.cursorPos.x;
                 root.mouseY = KWinComponents.Workspace.cursorPos.y;
+                root.pointerMoved = false;
+                root.updateCursorTarget();
                 root.dropTargetDesktop = null;
                 statesCall.call();
                 root.rebuildGroups();
@@ -248,12 +265,147 @@ FocusScope {
                 }
                 root.originDesktop = null;
                 root.desktopPicked = false;
+                root.cursorDesktop = null;
+                root.cursorWindow = null;
             }
         }
     }
 
-    // One group per occupied desktop: the output-shaped desktop, or for a
-    // monocle desktop the windows side by side at their real proportions.
+    // Real hit test against the windows as they sit on the screen now. KWin's
+    // overview cannot warp the pointer, so this is what tells the grid which
+    // window the user is already pointing at.
+    function updateCursorTarget() {
+        const p = KWinComponents.Workspace.cursorPos;
+        const desktop = KWinComponents.Workspace.currentDesktop;
+        let found = null;
+        const order = KWinComponents.Workspace.stackingOrder;
+        for (let i = order.length - 1; i >= 0; i--) {
+            const w = order[i];
+            if (w.skipPager || w.onScreenDisplay || w.notification || w.criticalNotification || w.minimized || w.hidden) {
+                continue;
+            }
+            if (w.output === null || w.output.name !== root.targetScreen.name) {
+                continue;
+            }
+            if (!w.onAllDesktops && w.desktops.indexOf(desktop) === -1) {
+                continue;
+            }
+            if (w.activities.length > 0 && w.activities.indexOf(root.activity) === -1) {
+                continue;
+            }
+            if (p.x >= w.x && p.x < w.x + w.width && p.y >= w.y && p.y < w.y + w.height) {
+                found = w;
+                break;
+            }
+        }
+        root.cursorDesktop = desktop;
+        root.cursorWindow = found;
+    }
+
+    // Block shape for a monocle desktop's window cells: two side by side,
+    // three in a row, four as a square. Above that a near-square block.
+    function blockShape(cells) {
+        if (cells <= 1) {
+            return { rows: 1, cols: 1 };
+        }
+        if (cells === 2) {
+            return { rows: 1, cols: 2 };
+        }
+        if (cells === 3) {
+            return { rows: 1, cols: 3 };
+        }
+        if (cells === 4) {
+            return { rows: 2, cols: 2 };
+        }
+        const cols = Math.ceil(Math.sqrt(cells));
+        return { rows: Math.ceil(cells / cols), cols: cols };
+    }
+
+    // The DSL bracket layout ("[1 2]" side by side, "/1 1/" stacked) to leaf
+    // rectangles in 0..1 tile space, in leaf order.
+    function shapeRects(text, count) {
+        const rects = [];
+        if (count < 1) {
+            return rects;
+        }
+        let i = 0;
+        function skip() {
+            while (i < text.length && /\s/.test(text[i])) {
+                i++;
+            }
+        }
+        function node(parentDir) {
+            skip();
+            const ch = text[i];
+            if (ch === "[" || ch === "/") {
+                i++;
+                const dir = ch === "[" ? 1 : 2;
+                const close = ch === "[" ? "]" : "/";
+                const children = [];
+                while (true) {
+                    skip();
+                    if (i >= text.length) {
+                        throw new Error("unterminated shape");
+                    }
+                    if (text[i] === close) {
+                        i++;
+                        break;
+                    }
+                    children.push(node(dir));
+                }
+                return { dir: dir, children: children };
+            }
+            const m = /^\d+/.exec(text.slice(i));
+            if (m === null) {
+                throw new Error("bad shape");
+            }
+            i += m[0].length;
+            const n = Math.max(1, parseInt(m[0], 10));
+            const dir = parentDir === 1 ? 2 : 1;
+            const children = [];
+            for (let k = 0; k < n; k++) {
+                children.push({ dir: 0, children: [] });
+            }
+            return children.length === 1 ? children[0] : { dir: dir, children: children };
+        }
+        function walk(n, x, y, w, h) {
+            if (n.dir === 0) {
+                rects.push({ x: x, y: y, w: w, h: h });
+                return;
+            }
+            const k = n.children.length;
+            if (n.dir === 1) {
+                const cw = w / k;
+                for (let c = 0; c < k; c++) {
+                    walk(n.children[c], x + c * cw, y, cw, h);
+                }
+            } else {
+                const ch = h / k;
+                for (let c = 0; c < k; c++) {
+                    walk(n.children[c], x, y + c * ch, w, ch);
+                }
+            }
+        }
+        try {
+            walk(node(1), 0, 0, 1, 1);
+        } catch (e) {
+            rects.length = 0;
+        }
+        if (rects.length !== count) {
+            // Unknown or mismatched shape: an even grid is still a fair preview.
+            rects.length = 0;
+            const cols = Math.ceil(Math.sqrt(count));
+            const rows = Math.ceil(count / cols);
+            for (let k = 0; k < count; k++) {
+                rects.push({ x: (k % cols) / cols, y: Math.floor(k / cols) / rows, w: 1 / cols, h: 1 / rows });
+            }
+        }
+        return rects;
+    }
+
+    // One group per occupied desktop. A monocle desktop with a few windows
+    // becomes one cell per window; over the limit it previews the tiled layout
+    // it would switch to.
     function collectGroups() {
         const wins = KWinComponents.Workspace.stackingOrder;
         const list = [];
@@ -266,10 +418,10 @@ FocusScope {
             } catch (e) {
                 state = {};
             }
-            let count = 0;
-            let sumW = 0;
-            let maxH = 0;
-            for (const w of wins) {
+            const desktopWindows = [];
+            // Topmost first: in monocle the active window leads the cells.
+            for (let j = wins.length - 1; j >= 0; j--) {
+                const w = wins[j];
                 // OSDs, notifications and KWin's own overlays float on every
                 // desktop; they are not desktop contents.
                 if (w.onScreenDisplay || w.notification || w.criticalNotification) {
@@ -287,80 +439,134 @@ FocusScope {
                 if (w.activities.length > 0 && w.activities.indexOf(root.activity) === -1) {
                     continue;
                 }
-                count++;
-                if (!w.minimized) {
-                    sumW += w.width;
-                    maxH = Math.max(maxH, w.height);
+                desktopWindows.push(w);
+            }
+            const shown = desktopWindows.filter(w => !w.minimized);
+            const mono = state.mono === true && shown.length > 0;
+            let monoMode = mono ? "cells" : "";
+            let previewRects = null;
+            let monoCols = 1;
+            let monoRows = 1;
+            let cells = 1;
+            if (mono) {
+                if (shown.length > root.monocleLimit) {
+                    monoMode = "preview";
+                    previewRects = root.shapeRects(state.shape || "", shown.length);
+                } else {
+                    cells = shown.length;
+                    const shape = root.blockShape(cells);
+                    monoCols = shape.cols;
+                    monoRows = shape.rows;
                 }
             }
-            const mono = state.mono === true && sumW > 0;
             list.push({
                 index: i,
                 desktop: d,
                 number: d.x11DesktopNumber,
-                occupied: count > 0,
+                occupied: desktopWindows.length > 0,
                 mono: mono,
+                monoMode: monoMode,
+                monoWindows: mono ? shown : [],
+                previewRects: previewRects,
+                monoCols: monoCols,
+                monoRows: monoRows,
+                cells: cells,
                 layout: state.layout || "",
-                count: count,
-                w: mono ? sumW : root.screenW,
-                h: mono ? Math.max(1, maxH) : root.screenH
+                count: desktopWindows.length
             });
         }
         return list;
     }
 
-    // Shelf-pack every group at one common scale. The layout is "max scale
-    // possible", so search for the biggest scale whose rows still fit.
+    // Place the blocks into a grid of screen-shaped cells. The blocks have
+    // fixed shapes, so every column count is tried and the one that gives the
+    // largest, most square-ish grid wins.
     function packGroups(occupied) {
         const availW = root.screenW - 2 * root.outerPad;
-        // Empty-desktop chips float above the grid instead of reserving a band
-        // at the top; while dragging they get the band so they stay reachable.
-        const topInset = root.chipsShown ? root.chipRowH : 0;
-        const availH = root.screenH - 2 * root.outerPad - topInset - root.mediaSpace;
-        // Desktop order, so desktop 1 is the first group at the top.
-        const ordered = occupied.slice();
-        let lo = 0.001;
-        let hi = 1;
+        const availH = root.screenH - 2 * root.outerPad - root.topBand;
+        const aspect = root.screenW / Math.max(1, root.screenH);
+        const items = [];
+        let total = 0;
+        for (const g of occupied) {
+            const shape = root.blockShape(g.cells);
+            items.push({ g: g, rows: shape.rows, cols: shape.cols });
+            total += g.cells;
+        }
+        if (items.length === 0) {
+            return null;
+        }
+        // Small blocks first fill the gaps the big blocks leave behind.
+        items.sort((a, b) => (a.rows * a.cols - b.rows * b.cols) || (a.g.index - b.g.index));
         let best = null;
-        for (let iter = 0; iter < 22; iter++) {
-            const s = (lo + hi) / 2;
-            const rows = [];
-            let row = null;
-            let ok = true;
-            for (const g of ordered) {
-                const gw = g.w * s;
-                const gh = g.h * s;
-                if (gw > availW) {
-                    ok = false;
-                    break;
-                }
-                if (row !== null && row.w + root.groupGap + gw > availW) {
-                    rows.push(row);
-                    row = null;
-                }
-                if (row === null) {
-                    row = { items: [], w: 0, h: 0 };
-                }
-                row.items.push({ g: g, w: gw, h: gh });
-                row.w += (row.items.length > 1 ? root.groupGap : 0) + gw;
-                row.h = Math.max(row.h, gh);
+        for (let C = 1; C <= total; C++) {
+            if (!items.every(it => it.cols <= C)) {
+                continue;
             }
-            if (ok && row !== null) {
-                rows.push(row);
+            const grid = root.placeBlocks(items, C, Math.ceil(total / C));
+            if (grid === null) {
+                continue;
             }
-            let totalH = 0;
-            for (const r of rows) {
-                totalH += r.h;
+            const cellW = Math.min(availW / C, (availH * aspect) / grid.rows);
+            if (!(cellW > 0)) {
+                continue;
             }
-            totalH += root.groupGap * Math.max(0, rows.length - 1);
-            if (ok && rows.length > 0 && totalH <= availH) {
-                lo = s;
-                best = { s: s, rows: rows, h: totalH };
-            } else {
-                hi = s;
+            const fill = total / (C * grid.rows);
+            // Prefer square-ish grids: one that is much wider or taller than
+            // the screen leaves the other axis empty. Landscape screens also
+            // prefer columns over rows.
+            const score = cellW * fill / (1 + 0.35 * Math.abs(C - grid.rows)) * (C < grid.rows ? 0.95 : 1);
+            if (best === null || score > best.score + 0.0001) {
+                best = { score: score, C: C, rows: grid.rows, cells: cellW, placements: grid.placements };
             }
         }
         return best;
+    }
+
+    // First fit into a C-column grid, growing the rows until everything fits.
+    function placeBlocks(items, C, minRows) {
+        let maxRows = 0;
+        for (const it of items) {
+            maxRows += it.rows;
+        }
+        for (let R = minRows; R <= Math.max(minRows, maxRows); R++) {
+            const used = [];
+            const placements = [];
+            let ok = true;
+            for (const it of items) {
+                let at = null;
+                for (let r = 0; r + it.rows <= R && at === null; r++) {
+                    for (let c = 0; c + it.cols <= C; c++) {
+                        let free = true;
+                        for (let rr = r; rr < r + it.rows && free; rr++) {
+                            for (let cc = c; cc < c + it.cols; cc++) {
+                                if (used[rr * C + cc] === true) {
+                                    free = false;
+                                    break;
+                                }
+                            }
+                        }
+                        if (free) {
+                            at = { r: r, c: c };
+                            break;
+                        }
+                    }
+                }
+                if (at === null) {
+                    ok = false;
+                    break;
+                }
+                for (let rr = at.r; rr < at.r + it.rows; rr++) {
+                    for (let cc = at.c; cc < at.c + it.cols; cc++) {
+                        used[rr * C + cc] = true;
+                    }
+                }
+                placements.push({ g: it.g, r: at.r, c: at.c, rows: it.rows, cols: it.cols });
+            }
+            if (ok) {
+                return { rows: R, placements: placements };
+            }
+        }
+        return null;
     }
 
     function rebuildGroups() {
@@ -368,22 +574,22 @@ FocusScope {
         const occupied = list.filter(g => g.occupied);
         const packed = root.packGroups(occupied);
         const rects = {};
-        if (packed !== null && packed.s > 0) {
-            const topInset = root.chipsShown ? root.chipRowH : 0;
-            let y = root.outerPad + topInset + Math.max(0, (root.screenH - 2 * root.outerPad - topInset - root.mediaSpace - packed.h) / 2);
-            for (const row of packed.rows) {
-                let x = (root.screenW - row.w) / 2;
-                for (const item of row.items) {
-                    rects[item.g.index] = {
-                        x: Math.round(x),
-                        y: Math.round(y + (row.h - item.h) / 2),
-                        w: Math.round(item.w),
-                        h: Math.round(item.h),
-                        s: packed.s
-                    };
-                    x += item.w + root.groupGap;
-                }
-                y += row.h + root.groupGap;
+        if (packed !== null && packed.cells > 0) {
+            const cellH = packed.cells * root.screenH / Math.max(1, root.screenW);
+            const gridW = packed.C * packed.cells;
+            const gridH = packed.rows * cellH;
+            const x0 = (root.screenW - gridW) / 2;
+            const y0 = root.outerPad + root.topBand + Math.max(0, (root.screenH - 2 * root.outerPad - root.topBand - gridH) / 2);
+            for (const p of packed.placements) {
+                // A couple of pixels between blocks keep neighbouring desktops
+                // from reading as one wide tile.
+                rects[p.g.index] = {
+                    x: Math.round(x0 + p.c * packed.cells) + 2,
+                    y: Math.round(y0 + p.r * cellH) + 2,
+                    w: Math.max(1, Math.round(p.cols * packed.cells) - 4),
+                    h: Math.max(1, Math.round(p.rows * cellH) - 4),
+                    s: packed.cells / Math.max(1, root.screenW)
+                };
             }
         }
         for (const g of list) {
@@ -794,7 +1000,14 @@ FocusScope {
         }
     }
 
-    function activateWindow(window, desktop) {
+    // The effect cannot move the real pointer; polonium asks KWin's
+    // MoveMouseToFocus shortcut to centre the cursor on the focused window.
+    function requestWarp(window) {
+        requestCall.arguments = [JSON.stringify({ t: "warp", id: String(window.internalId) })];
+        requestCall.call();
+    }
+
+    function activateWindow(window, desktop, warp) {
         if (desktop === undefined && window.desktops && window.desktops.length === 1) {
             desktop = window.desktops[0];
         }
@@ -806,6 +1019,21 @@ FocusScope {
             window.minimized = false;
         }
         KWinComponents.Workspace.activeWindow = window;
+        if (warp === true) {
+            root.requestWarp(window);
+        }
+        effect.deactivate();
+    }
+
+    // A window on a desktop over the monocle limit: switching to the previewed
+    // tiled layout and focusing it are one request to polonium.
+    function activateTiled(window, desktop) {
+        root.desktopPicked = true;
+        if (desktop !== undefined) {
+            root.switchTo(desktop);
+        }
+        requestCall.arguments = [JSON.stringify({ t: "tiled", id: String(window.internalId) })];
+        requestCall.call();
         effect.deactivate();
     }
 
@@ -1016,50 +1244,36 @@ FocusScope {
         readonly property int slot: mini ? tile.minimizedItems.findIndex(t => String(t.window.internalId) === String(window.internalId)) : -1
         readonly property real chip: tile.chipSize
 
-        // Monocle puts every window of a desktop in one full-size tile, so the
-        // overview splits that tile into a column per window.
-        readonly property var twins: mini ? [] : tile.monoItems
-        readonly property int twinCount: twins.length
-        readonly property bool stacked: twinCount > 1
-        readonly property int twinIndex: {
-            if (!stacked) {
-                return 0;
-            }
-            for (let i = 0; i < twins.length; i++) {
-                const other = twins[i];
-                if (other && other.window && String(other.window.internalId) === String(window.internalId)) {
-                    return i;
-                }
-            }
-            return 0;
-        }
-        // Monocle stacks every window of the desktop on the same screen area, so
-        // the overview lays the group out as columns at the windows' own widths.
-        readonly property real stackOffset: {
-            if (!stacked) {
-                return 0;
-            }
-            let x = 0;
-            for (let i = 0; i < twinIndex; i++) {
-                const other = twins[i];
-                x += other && other.window ? other.window.width * s : 0;
-            }
-            return x;
-        }
+        // A monocle desktop is a block of screen-shaped cells, one per window;
+        // over the limit it previews the tiled shape instead.
+        readonly property int cellIndex: mini || tile.monoWindows === undefined ? -1 : tile.monoWindows.findIndex(w => String(w.internalId) === String(window.internalId))
+        readonly property bool inCell: cellIndex >= 0
+        readonly property bool inPreview: !mini && inCell && tile.previewRects !== null
+        readonly property var previewRect: inPreview ? tile.previewRects[cellIndex] : null
+        readonly property real cellW: tile.width / Math.max(1, tile.monoCols)
+        readonly property real cellH: tile.height / Math.max(1, tile.monoRows)
+        readonly property real cellInset: inCell ? 2 : 0
 
         readonly property real wx: (window.x - tile.screen.geometry.x) * s
         readonly property real wy: (window.y - tile.screen.geometry.y) * s
         readonly property real ww: window.width * s
         readonly property real wh: window.height * s
         // the on-screen part of the window, in tile coordinates
-        readonly property real initX: Math.round(stacked ? stackOffset : Math.max(0, wx))
-        readonly property real initY: Math.round(stacked ? Math.max(0, (tile.height - wh) / 2) : Math.max(0, wy))
-        readonly property real initW: Math.round(stacked ? ww : Math.min(wx + ww, tile.width) - initX)
-        readonly property real initH: Math.round(stacked ? wh : Math.min(wy + wh, tile.height) - initY)
-        readonly property bool shown: !window.skipPager && (window.pid > 0 || window.resourceClass !== "") && (mini ? root.cfg.ShowMinimized : initW > 0 && initH > 0)
+        readonly property real initX: inCell ? Math.round((cellIndex % Math.max(1, tile.monoCols)) * cellW + cellInset) : Math.round(Math.max(0, wx))
+        readonly property real initY: inCell ? Math.round(Math.floor(cellIndex / Math.max(1, tile.monoCols)) * cellH + cellInset) : Math.round(Math.max(0, wy))
+        readonly property real initW: inCell ? Math.max(1, Math.round(cellW - 2 * cellInset)) : Math.round(Math.min(wx + ww, tile.width) - initX)
+        readonly property real initH: inCell ? Math.max(1, Math.round(cellH - 2 * cellInset)) : Math.round(Math.min(wy + wh, tile.height) - initY)
+        // Preview leaves share the tile with a small gap between them.
+        x: mini ? 6 + slot * (chip + 4) : (inPreview ? Math.round(previewRect.x * tile.width) + 2 : initX)
+        y: mini ? tile.height - chip - 6 : (inPreview ? Math.round(previewRect.y * tile.height) + 2 : initY)
+        width: mini ? chip : (inPreview ? Math.max(1, Math.round(previewRect.w * tile.width) - 4) : Math.max(1, initW))
+        height: mini ? chip : (inPreview ? Math.max(1, Math.round(previewRect.h * tile.height) - 4) : Math.max(1, initH))
+        readonly property bool shown: !window.skipPager && (window.pid > 0 || window.resourceClass !== "") && (mini ? root.cfg.ShowMinimized : width > 0 && height > 0)
         readonly property bool compact: Math.min(width, height) < 56
         readonly property bool dragging: root.dragTile === win && root.dragActive
         readonly property bool hovered: dragArea.containsMouse
+        // Where the real pointer already is when the overview opens.
+        readonly property bool initial: !root.pointerMoved && root.cursorWindow !== null && String(root.cursorWindow.internalId) === String(win.window.internalId)
         readonly property real radius: Math.max(2, 18 * s)
 
         property int dragButton: Qt.NoButton
@@ -1067,10 +1281,6 @@ FocusScope {
         property point pressPointer: Qt.point(0, 0)
         property point pressGrab: Qt.point(0, 0)
 
-        x: mini ? 6 + slot * (chip + 4) : initX
-        y: mini ? tile.height - chip - 6 : initY
-        width: mini ? chip : Math.max(1, initW)
-        height: mini ? chip : Math.max(1, initH)
         visible: shown
         clip: true
         // minimized chips sit above everything so they stay reachable
@@ -1089,10 +1299,10 @@ FocusScope {
         }
 
         Item {
-            x: win.mini || win.stacked ? 0 : Math.round(Math.min(0, win.wx))
-            y: win.mini || win.stacked ? 0 : Math.round(Math.min(0, win.wy))
-            width: win.mini ? win.chip : Math.round(win.ww)
-            height: win.mini ? win.chip : Math.round(win.wh)
+            x: win.mini || win.inCell ? 0 : Math.round(Math.min(0, win.wx))
+            y: win.mini || win.inCell ? 0 : Math.round(Math.min(0, win.wy))
+            width: win.mini ? win.chip : (win.inCell ? win.width : Math.round(win.ww))
+            height: win.mini ? win.chip : (win.inCell ? win.height : Math.round(win.wh))
 
             Rectangle {
                 anchors.fill: parent
@@ -1163,13 +1373,14 @@ FocusScope {
             opacity: win.window.minimized ? 0.7 : 1
         }
 
-        // Window border: blue, always 2px, stronger on hover.
+        // Window border: blue, always 2px, stronger on hover or under the real
+        // pointer when the overview opens.
         Rectangle {
             anchors.fill: parent
             radius: win.radius
             color: "transparent"
-            border.width: 2
-            border.color: win.hovered ? root.accentColor : root.alpha(root.accentColor, 0.5)
+            border.width: win.hovered || win.initial ? 3 : 2
+            border.color: win.hovered || win.initial ? root.accentColor : root.alpha(root.accentColor, 0.5)
         }
 
         MouseArea {
@@ -1192,8 +1403,10 @@ FocusScope {
                 // cursor is over a window thumbnail rather than a tile gap.
                 root.mouseX = p.x;
                 root.mouseY = p.y;
-                // Middle click closes, so it never drags.
-                if (!(mouse.buttons & (Qt.LeftButton | Qt.RightButton))) {
+                root.pointerMoved = true;
+                // Middle click closes, so it never drags. A tiled preview is a
+                // choice, not a draggable layout.
+                if (!(mouse.buttons & (Qt.LeftButton | Qt.RightButton)) || win.inPreview) {
                     return;
                 }
                 if (!root.dragActive && !win.dragged) {
@@ -1221,7 +1434,11 @@ FocusScope {
                     return;
                 }
                 if (mouse.button === Qt.LeftButton) {
-                    root.activateWindow(win.window, win.tile.desktop);
+                    if (win.inPreview) {
+                        root.activateTiled(win.window, win.tile.desktop);
+                    } else {
+                        root.activateWindow(win.window, win.tile.desktop, true);
+                    }
                 } else if (mouse.button === Qt.MiddleButton) {
                     win.window.closeWindow();
                 } else if (mouse.button === Qt.RightButton) {
@@ -1256,22 +1473,13 @@ FocusScope {
             }
             return items;
         }
-        // In monocle every window shares one tile; list them so each delegate
-        // can take its own column. Window properties keep this loop free of a
-        // binding cycle through item.shown.
-        readonly property var monoItems: {
-            if (!monoLayout) {
-                return [];
-            }
-            const items = [];
-            for (let i = 0; i < windows.count; i++) {
-                const item = windows.itemAt(i);
-                if (item && !item.window.minimized && !item.window.skipPager) {
-                    items.push(item);
-                }
-            }
-            return items;
-        }
+        // Monocle cells and the tiled preview both come from the group, so a
+        // delegate only has to look up its own window.
+        readonly property var monoWindows: group ? group.monoWindows : []
+        readonly property var previewRects: group ? group.previewRects : null
+        readonly property int monoCols: group ? group.monoCols : 1
+        readonly property int monoRows: group ? group.monoRows : 1
+        readonly property bool initial: !root.pointerMoved && root.cursorDesktop !== null && root.cursorDesktop.x11DesktopNumber === desktopTile.desktop.x11DesktopNumber
         // The window under a point in this tile, ignoring one being dragged.
         function windowAt(x, y, ignore) {
             let found = null;
@@ -1302,8 +1510,8 @@ FocusScope {
             anchors.fill: parent
             radius: root.tileRadius
             color: root.alpha(root.tileColor, desktopTile.dropHover ? 0.95 : 0.86)
-            border.width: desktopTile.dropHover || desktopTile.hovered ? 2 : 1
-            border.color: desktopTile.dropHover || desktopTile.hovered ? root.accentColor : Qt.rgba(1, 1, 1, 0.3)
+            border.width: desktopTile.dropHover || desktopTile.hovered || desktopTile.initial ? 2 : 1
+            border.color: desktopTile.dropHover || desktopTile.hovered || desktopTile.initial ? root.accentColor : Qt.rgba(1, 1, 1, 0.3)
         }
 
         Loader {
@@ -1382,6 +1590,7 @@ FocusScope {
                 const p = desktopHover.mapToItem(root, mouse.x, mouse.y);
                 root.mouseX = p.x;
                 root.mouseY = p.y;
+                root.pointerMoved = true;
             }
         }
 
@@ -1481,6 +1690,7 @@ FocusScope {
         onPositionChanged: (mouse) => {
             root.mouseX = mouse.x;
             root.mouseY = mouse.y;
+            root.pointerMoved = true;
             if (root.dragActive && root.dragTile) {
                 root.dragPointer = mouse;
                 root.updateDropTarget();
@@ -1530,12 +1740,15 @@ FocusScope {
             delegate: DesktopTile {}
         }
 
-        // Empty desktops only need a number to drop a window on.
+        // Empty desktops only need a number to drop a window on. Each is shaped
+        // like the screen so it reads as a desktop, and the font grows with it.
         Row {
             id: chipRow
-            visible: root.emptyDesktops.length > 0 && root.dragActive
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: root.outerPad + (root.chipRowH - height) / 2
+            visible: root.emptyDesktops.length > 0 && root.chipsShown
+            // Leave the media strip its half of the band when it is open.
+            readonly property real avail: root.screenW - 2 * root.outerPad - (root.mediaSpace > 0 ? mediaStrip.width + root.outerPad : 0)
+            x: root.outerPad + (avail - width) / 2
+            y: root.outerPad + (root.topBand - height) / 2
             spacing: root.groupGap
 
             Repeater {
@@ -1545,10 +1758,12 @@ FocusScope {
                     id: chip
                     required property var modelData
                     readonly property QtObject desktop: modelData.desktop
+                    readonly property real aspect: root.screenW / Math.max(1, root.screenH)
+                    readonly property real fitW: (chipRow.avail - (root.emptyDesktops.length - 1) * root.groupGap) / Math.max(1, root.emptyDesktops.length)
                     property bool dropHover: false
 
-                    width: Math.max(28, chipLabel.implicitWidth + 18)
-                    height: 26
+                    width: Math.min(root.chipRowH * aspect, fitW)
+                    height: width / aspect
                     radius: 6
                     color: root.alpha(root.panelColor, chip.dropHover ? 0.9 : 0.55)
                     border.width: chip.dropHover ? 2 : 1
@@ -1559,7 +1774,8 @@ FocusScope {
                         anchors.centerIn: parent
                         text: chip.modelData.number
                         color: root.panelText
-                        font.pixelSize: 11
+                        font.pixelSize: Math.max(12, Math.round(chip.height * 0.42))
+                        font.weight: Font.DemiBold
                     }
 
                     MouseArea {
@@ -1576,19 +1792,22 @@ FocusScope {
                             const p = mapToItem(root, mouse.x, mouse.y);
                             root.mouseX = p.x;
                             root.mouseY = p.y;
+                            root.pointerMoved = true;
                         }
                     }
                 }
             }
         }
 
-        // Now playing. Fed by the saver once a second; the bar interpolates
-        // between polls so it moves while the track plays.
+        // Now playing, beside the empty-desktop chips in the top band. Fed by
+        // the saver once a second; the bar interpolates between polls so it
+        // moves while the track plays. The toggle stays reachable when
+        // collapsed.
         Row {
             id: mediaStrip
-            visible: root.mediaSpace > 0
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: root.screenH - root.outerPad - root.mediaCardHeight
+            anchors.right: parent.right
+            anchors.rightMargin: root.outerPad
+            y: root.outerPad
             spacing: 2 * root.spacing
 
             // Media toggle button (show/hide media panel)
@@ -1617,6 +1836,7 @@ FocusScope {
                 model: mediaModel
                 Rectangle {
                     id: mediaCard
+                    visible: root.mediaExpanded
                     required property int index
                     required property string player
                     required property string app
@@ -1644,7 +1864,7 @@ FocusScope {
                         return Math.min(length, position + elapsed);
                     }
 
-                    width: Math.min(420, (root.screenW - 2 * root.outerPad - (mediaModel.count - 1) * mediaStrip.spacing) / Math.max(1, mediaModel.count))
+                    width: Math.min(320, (root.screenW * 0.5 - (mediaModel.count - 1) * mediaStrip.spacing) / Math.max(1, mediaModel.count))
                     height: root.mediaCardHeight
                     radius: 6
                     color: root.alpha(root.panelText, 0.08)

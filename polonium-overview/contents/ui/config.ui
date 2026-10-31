@@ -341,6 +341,26 @@
      </property>
     </widget>
    </item>
+   <item row="12" column="0">
+    <widget class="QLabel" name="label_MonocleLimit">
+     <property name="text">
+      <string>Monocle windows shown as cells:</string>
+     </property>
+    </widget>
+   </item>
+   <item row="12" column="1">
+    <widget class="QSpinBox" name="kcfg_MonocleLimit">
+     <property name="minimum">
+      <number>1</number>
+     </property>
+     <property name="maximum">
+      <number>12</number>
+     </property>
+     <property name="suffix">
+      <string> windows</string>
+     </property>
+    </widget>
+   </item>
    <item row="13" column="0">
     <widget class="QLabel" name="label_Options">
      <property name="text">

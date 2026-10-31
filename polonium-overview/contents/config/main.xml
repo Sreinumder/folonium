@@ -38,6 +38,9 @@
         <entry name="ShowAppIcon" type="Bool">
             <default>false</default>
         </entry>
+        <entry name="MonocleLimit" type="Int">
+            <default>4</default>
+        </entry>
         <entry name="Backdrop" type="Enum">
             <default>Desktop</default>
             <choices>
