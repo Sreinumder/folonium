@@ -103,7 +103,7 @@ FocusScope {
     property QtObject menuWindow: null
     property point menuAt: Qt.point(0, 0)
 
-    readonly property int tileRadius: 8
+    readonly property int tileRadius: 0
 
     // What sits behind the panel: live desktop, wallpaper or a flat colour.
     readonly property int backdropMode: cfg.Backdrop
@@ -273,7 +273,7 @@ FocusScope {
                 root.dropTargetDesktop = null;
                 statesCall.call();
                 root.rebuildGroups();
-                if (root.cfg.TransposeIn) {
+                if (root.cfg.Transpose) {
                     root.transposeOpenPointer();
                 }
             } else {
@@ -284,7 +284,7 @@ FocusScope {
                 if (!root.desktopPicked && root.originDesktop !== null) {
                     root.switchTo(root.originDesktop);
                 }
-                if (!root.desktopPicked && root.openTransposed && root.cfg.TransposeOut) {
+                if (!root.desktopPicked && root.openTransposed && root.cfg.TransposeDesktopClick) {
                     root.warpPointer(root.openPointer, 150);
                 }
                 root.originDesktop = null;
@@ -926,17 +926,17 @@ FocusScope {
     Item {
         id: panelTheme
         Kirigami.Theme.inherit: false
-        Kirigami.Theme.colorSet: root.colorSet(root.cfg.PanelColorSet)
+        Kirigami.Theme.colorSet: root.colorSet("View")
     }
     Item {
         id: tileTheme
         Kirigami.Theme.inherit: false
-        Kirigami.Theme.colorSet: root.colorSet(root.cfg.TileColorSet)
+        Kirigami.Theme.colorSet: root.colorSet("Window")
     }
     Item {
         id: windowTheme
         Kirigami.Theme.inherit: false
-        Kirigami.Theme.colorSet: root.colorSet(root.cfg.WindowColorSet)
+        Kirigami.Theme.colorSet: root.colorSet("Button")
     }
     readonly property color panelColor: panelTheme.Kirigami.Theme.backgroundColor
     readonly property color panelText: panelTheme.Kirigami.Theme.textColor
@@ -944,14 +944,7 @@ FocusScope {
     readonly property color tileText: tileTheme.Kirigami.Theme.textColor
     readonly property color windowColor: windowTheme.Kirigami.Theme.backgroundColor
     readonly property color outlineColor: windowTheme.Kirigami.Theme.textColor
-    readonly property color accentColor: {
-        switch (cfg.ActiveBorderColor) {
-        case 1: return Kirigami.Theme.focusColor;
-        case 2: return Kirigami.Theme.linkColor;
-        case 3: return Kirigami.Theme.textColor;
-        default: return Kirigami.Theme.highlightColor;
-        }
-    }
+    readonly property color accentColor: Kirigami.Theme.highlightColor
 
     function colorSet(index) {
         switch (index) {
@@ -1501,7 +1494,7 @@ FocusScope {
         readonly property bool hovered: dragArea.containsMouse
         // Where the real pointer already is when the overview opens.
         readonly property bool initial: !root.pointerMoved && root.cursorWindow !== null && String(root.cursorWindow.internalId) === String(win.window.internalId)
-        readonly property real radius: Math.max(2, 18 * s)
+        readonly property real radius: 0
 
         property int dragButton: Qt.NoButton
         property bool dragged: false
@@ -1592,7 +1585,7 @@ FocusScope {
             anchors.centerIn: parent
             // off by default: the live thumbnail already says what the window
             // is, and the glyph hides the content it sits on
-            visible: root.cfg.ShowAppIcon || win.window.minimized
+            visible: win.window.minimized
             readonly property int iconSize: Math.round(Math.min(win.width, win.height) * (win.mini ? 0.6 : (win.compact ? 0.5 : 0.35)))
             width: iconSize
             height: iconSize
@@ -1759,7 +1752,7 @@ FocusScope {
 
         Loader {
             anchors.fill: parent
-            active: root.cfg.WallpaperTiles
+            active: true
             sourceComponent: Item {
                 KWinComponents.DesktopBackground {
                     id: wallpaper
@@ -1791,7 +1784,7 @@ FocusScope {
             anchors.margins: 6
             width: numberText.implicitWidth + 12
             height: numberText.implicitHeight + 6
-            radius: 4
+            radius: 0
             color: "black"
             opacity: 0.75
 
@@ -2012,7 +2005,7 @@ FocusScope {
 
                     width: Math.min(root.chipRowH * aspect, fitW)
                     height: width / aspect
-                    radius: 6
+                    radius: 0
                     color: root.alpha(root.panelColor, chip.dropHover ? 0.9 : 0.55)
                     border.width: chip.dropHover ? 2 : 1
                     border.color: chip.dropHover ? "white" : Qt.rgba(1, 1, 1, 0.45)
@@ -2096,7 +2089,7 @@ FocusScope {
 
                     width: Math.min(260, (root.screenW * 0.4 - (mediaModel.count - 1) * mediaStrip.spacing) / Math.max(1, mediaModel.count))
                     height: root.mediaCardHeight
-                    radius: 8
+                    radius: 0
                     // Frosted: the panel already blurs the desktop behind it.
                     color: root.alpha(root.panelColor, 0.55)
                     border.width: 1
@@ -2131,7 +2124,7 @@ FocusScope {
                         y: cover.y + cover.height - 17
                         width: 17
                         height: 17
-                        radius: 9
+                        radius: 0
                         color: root.alpha(root.panelColor, 0.8)
 
                         Kirigami.Icon {
@@ -2209,7 +2202,7 @@ FocusScope {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: parent.width
                                     height: 5
-                                    radius: 3
+                                    radius: 0
                                     color: root.alpha(root.panelText, 0.2)
                                 }
 
@@ -2217,7 +2210,7 @@ FocusScope {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: mediaCard.length > 0 ? parent.width * Math.min(1, mediaCard.shownPosition / mediaCard.length) : 0
                                     height: 5
-                                    radius: 3
+                                    radius: 0
                                     color: root.accentColor
                                 }
 
@@ -2238,7 +2231,7 @@ FocusScope {
                                     y: -height - 3
                                     width: tipText.implicitWidth + 8
                                     height: 14
-                                    radius: 3
+                                    radius: 0
                                     color: root.alpha(root.panelColor, 0.95)
                                     border.width: 1
                                     border.color: Qt.rgba(1, 1, 1, 0.2)
@@ -2328,7 +2321,7 @@ FocusScope {
         visible: root.menuWindow !== null
         width: 260
         height: menuColumn.implicitHeight + 8
-        radius: 6
+        radius: 0
         color: root.alpha(root.panelColor, 0.97)
         border.width: 1
         border.color: Qt.rgba(1, 1, 1, 0.25)
