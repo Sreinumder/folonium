@@ -61,3 +61,5 @@ tiling script, which polls it.
 - Plasma 6 Wayland only; X11 is not supported.
 - Engine state per display lives in `~/.config/polonium/settings.json`.
 - Script/effect enable flags and engine options live in `~/.config/kwinrc`.
+- For showing the Playing media in the overview effect. For browsers it is best to install the plasma-integration plugin.
+    - Firefox based browser might show two separate media. You should set `media.hardwaremediakeys.enabled` flag to false.
