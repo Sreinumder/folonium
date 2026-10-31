@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Folonium Settings
+Comment=Opens Folonium per-desktop settings
+Exec=qdbus-qt6 org.kde.kglobalaccel /component/kwin invokeShortcut "FoloniumToggleSettingsMenu"
+Icon=preferences-system-windows-effect-presentwindows
+Terminal=false
+Type=Application
+Categories=Settings;

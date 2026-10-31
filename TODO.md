@@ -63,5 +63,5 @@ Remaining work:
 
 - KWin caches QML documents per URL for the whole session; renaming or adding
   files inside a loaded package needs a KWin/Plasma restart.
-- The script instance currently running may be loaded from `~/dev/polonium-run3`
+- The script instance currently running may be loaded from `~/dev/folonium-run3`
   because the installed entry point URL was poisoned by an earlier load.

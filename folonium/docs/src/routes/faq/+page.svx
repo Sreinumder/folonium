@@ -1,0 +1,48 @@
+# FAQ
+
+## What layouts are supported?
+
+Right now, we have Binary Tree, Half, Three Column, Pillars, and Pager layouts.
+They are highly [configurable](../configuration) and can emulate several other layout styles.
+
+Particularly, master-stack can be built with Half and dwindle/spiral can be built with BTree.
+
+As Monocle is fundamentally incompatible with KWin tiles, it is unlikely that I personally will implement it.
+[Pull requests](https://github.com/zeroxoneafour/polonium/pulls) are welcome for it.
+
+## Why use this over Krohnkite?
+
+If Krohnkite works for you, then great! This script was made to integrate deeper with KWin, and therefore
+better supports features such as the virtual keyboard, tile resizing, and deep configuration.
+Krohnkite integrates less deeply and subsequently generally has a more predictable and stable experience.
+
+If you would like to use Krohnkite, [here is the link](https://store.kde.org/p/2144146).
+
+## How to use the DBus saver feature?
+
+Clone [the repo](https://github.com/zeroxoneafour/polonium) and run `make dbus`.
+This requires Rust to be installed.
+
+If you do not have Rust, download a prebuilt binary from GitHub and follow the Makefile to install it.
+
+You can reset your settings by running `folonium-saver --clear-settings`.
+
+## Shortcuts are duplicated after updating!
+
+KDE does not remove old shortcuts when updating a script. As the update renamed most of the shortcuts,
+you will have to remove the old ones manually. I recommend resetting them by removing all the lines in
+`~/.config/kglobalshortcutsrc` that contain the text `Folonium`.
+
+## Will you add some feature I want?
+
+Yes, probably! Open an [issue](https://github.com/zeroxoneafour/polonium/issues)
+or a [pull request](https://github.com/zeroxoneafour/polonium/pulls).
+A pull request makes it vastly more likely that a feature will be added.
+
+## It keeps breaking for me!
+
+Open an issue [here](https://github.com/zeroxoneafour/polonium/issues).
+
+## How about X11?
+
+Never gonna happen. Plasma 6.8 is removing it completely anyway.

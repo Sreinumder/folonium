@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Install or uninstall the three pieces of this repo:
-#   - the Polonium KWin tiling script
-#   - the Polonium overview KWin effect
-#   - the polonium-saver D-Bus service (settings, media, pointer warps)
+#   - the Folonium KWin tiling script
+#   - the Folonium overview KWin effect
+#   - the folonium-saver D-Bus service (settings, media, pointer warps)
 #
 # Usage: ./install.sh [install|uninstall]
 
@@ -12,11 +12,11 @@ REPO=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DATA=${XDG_DATA_HOME:-$HOME/.local/share}
 CONFIG=${XDG_CONFIG_HOME:-$HOME/.config}
 
-SCRIPT_DIR=$DATA/kwin/scripts/polonium
-EFFECT_DIR=$DATA/kwin/effects/betteroverview
-SAVER_DIR=$DATA/polonium-saver
-SERVICE_FILE=$DATA/dbus-1/services/xyz.vaughanm.polonium.service
-SETTINGS_APP=$DATA/applications/polonium-settings.desktop
+SCRIPT_DIR=$DATA/kwin/scripts/folonium
+EFFECT_DIR=$DATA/kwin/effects/foloniumoverview
+SAVER_DIR=$DATA/folonium-saver
+SERVICE_FILE=$DATA/dbus-1/services/xyz.vaughanm.folonium.service
+SETTINGS_APP=$DATA/applications/folonium-settings.desktop
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -49,46 +49,46 @@ set_plugin() {
 check_sources() {
     local f
     for f in \
-        "$REPO/polonium/src/index.ts" \
-        "$REPO/polonium/res/main.js" \
-        "$REPO/polonium/res/main.xml" \
-        "$REPO/polonium/res/config.ui" \
-        "$REPO/polonium/res/metadata.json" \
-        "$REPO/polonium-overview/metadata.json" \
-        "$REPO/polonium-overview/contents/config/main.xml" \
-        "$REPO/polonium-overview/contents/ui/main.qml" \
-        "$REPO/polonium-overview/contents/ui/ScreenView.qml" \
-        "$REPO/polonium-overview/contents/ui/config.ui" \
-        "$REPO/polonium-saver/polonium_saver.py"; do
+        "$REPO/folonium/src/index.ts" \
+        "$REPO/folonium/res/main.js" \
+        "$REPO/folonium/res/main.xml" \
+        "$REPO/folonium/res/config.ui" \
+        "$REPO/folonium/res/metadata.json" \
+        "$REPO/folonium-overview/metadata.json" \
+        "$REPO/folonium-overview/contents/config/main.xml" \
+        "$REPO/folonium-overview/contents/ui/main.qml" \
+        "$REPO/folonium-overview/contents/ui/ScreenView.qml" \
+        "$REPO/folonium-overview/contents/ui/config.ui" \
+        "$REPO/folonium-saver/folonium_saver.py"; do
         [ -f "$f" ] || die "missing $f"
     done
 }
 
 install_script() {
     local version
-    version=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$REPO/polonium/package.json" | head -n1)
+    version=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$REPO/folonium/package.json" | head -n1)
     version=${version:-0.0.0}
 
     say "Installing tiling script to $SCRIPT_DIR"
     rm -rf -- "$SCRIPT_DIR"
     install -d -- "$SCRIPT_DIR/contents/code" "$SCRIPT_DIR/contents/config" "$SCRIPT_DIR/contents/ui"
-    install -m 644 -- "$REPO/polonium/src/index.ts" "$SCRIPT_DIR/contents/code/main.mjs"
-    install -m 644 -- "$REPO/polonium/res/main.js" "$SCRIPT_DIR/contents/code/main.js"
-    install -m 644 -- "$REPO/polonium/src/qml/"*.qml "$SCRIPT_DIR/contents/ui/"
-    install -m 644 -- "$REPO/polonium/res/config.ui" "$SCRIPT_DIR/contents/ui/config.ui"
-    install -m 644 -- "$REPO/polonium/res/main.xml" "$SCRIPT_DIR/contents/config/main.xml"
-    sed -e "s/%VERSION%/$version/g" -e "s/%NAME%/polonium/g" \
-        "$REPO/polonium/res/metadata.json" > "$SCRIPT_DIR/metadata.json"
+    install -m 644 -- "$REPO/folonium/src/index.ts" "$SCRIPT_DIR/contents/code/main.mjs"
+    install -m 644 -- "$REPO/folonium/res/main.js" "$SCRIPT_DIR/contents/code/main.js"
+    install -m 644 -- "$REPO/folonium/src/qml/"*.qml "$SCRIPT_DIR/contents/ui/"
+    install -m 644 -- "$REPO/folonium/res/config.ui" "$SCRIPT_DIR/contents/ui/config.ui"
+    install -m 644 -- "$REPO/folonium/res/main.xml" "$SCRIPT_DIR/contents/config/main.xml"
+    sed -e "s/%VERSION%/$version/g" -e "s/%NAME%/folonium/g" \
+        "$REPO/folonium/res/metadata.json" > "$SCRIPT_DIR/metadata.json"
 }
 
 install_effect() {
     say "Installing overview effect to $EFFECT_DIR"
     rm -rf -- "$EFFECT_DIR"
     install -d -- "$EFFECT_DIR/contents/config" "$EFFECT_DIR/contents/ui"
-    install -m 644 -- "$REPO/polonium-overview/metadata.json" "$EFFECT_DIR/metadata.json"
-    install -m 644 -- "$REPO/polonium-overview/contents/config/main.xml" "$EFFECT_DIR/contents/config/main.xml"
-    install -m 644 -- "$REPO/polonium-overview/contents/ui/"*.qml "$EFFECT_DIR/contents/ui/"
-    install -m 644 -- "$REPO/polonium-overview/contents/ui/config.ui" "$EFFECT_DIR/contents/ui/config.ui"
+    install -m 644 -- "$REPO/folonium-overview/metadata.json" "$EFFECT_DIR/metadata.json"
+    install -m 644 -- "$REPO/folonium-overview/contents/config/main.xml" "$EFFECT_DIR/contents/config/main.xml"
+    install -m 644 -- "$REPO/folonium-overview/contents/ui/"*.qml "$EFFECT_DIR/contents/ui/"
+    install -m 644 -- "$REPO/folonium-overview/contents/ui/config.ui" "$EFFECT_DIR/contents/ui/config.ui"
 }
 
 install_saver() {
@@ -97,21 +97,21 @@ install_saver() {
     say "Installing saver to $SAVER_DIR"
     rm -rf -- "$SAVER_DIR"
     install -d -- "$SAVER_DIR"
-    install -m 644 -- "$REPO/polonium-saver/polonium_saver.py" "$SAVER_DIR/polonium_saver.py"
+    install -m 644 -- "$REPO/folonium-saver/folonium_saver.py" "$SAVER_DIR/folonium_saver.py"
 
     say "Writing D-Bus service $SERVICE_FILE"
     install -d -- "$(dirname -- "$SERVICE_FILE")"
     cat > "$SERVICE_FILE" <<EOF
 [D-BUS Service]
-Name=xyz.vaughanm.polonium
-Exec="$python" "$SAVER_DIR/polonium_saver.py"
+Name=xyz.vaughanm.folonium
+Exec="$python" "$SAVER_DIR/folonium_saver.py"
 EOF
 }
 
 restart_saver() {
-    pkill -f -- "$SAVER_DIR/polonium_saver.py" >/dev/null 2>&1 || true
+    pkill -f -- "$SAVER_DIR/folonium_saver.py" >/dev/null 2>&1 || true
     sleep 0.2
-    qdbus_cmd xyz.vaughanm.polonium /saver xyz.vaughanm.polonium.Ping >/dev/null 2>&1 || true
+    qdbus_cmd xyz.vaughanm.folonium /saver xyz.vaughanm.folonium.Ping >/dev/null 2>&1 || true
 }
 
 reload_kwin() {
@@ -120,41 +120,90 @@ reload_kwin() {
         return
     fi
     say "Reloading KWin script and effect"
-    qdbus_cmd org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript polonium >/dev/null 2>&1 || true
+    qdbus_cmd org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript folonium >/dev/null 2>&1 || true
     qdbus_cmd org.kde.KWin /Scripting org.kde.kwin.Scripting.loadDeclarativeScript \
-        "$SCRIPT_DIR/contents/ui/main.qml" polonium >/dev/null 2>&1 || true
+        "$SCRIPT_DIR/contents/ui/main.qml" folonium >/dev/null 2>&1 || true
     # A declarative script only runs after start(); without it the script is
     # loaded but never initializes (no states, no tiling).
     qdbus_cmd org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null 2>&1 || true
-    qdbus_cmd org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect betteroverview >/dev/null 2>&1 || true
-    qdbus_cmd org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect betteroverview >/dev/null 2>&1 || true
+    qdbus_cmd org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect foloniumoverview >/dev/null 2>&1 || true
+    qdbus_cmd org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect foloniumoverview >/dev/null 2>&1 || true
 }
 
-clear_polonium_cache() {
-    # Clear polonium saver cache/state only; keep settings.json and kwinrc.
-    rm -rf -- "$HOME/.cache/polonium" "$HOME/.cache/polonium-saver" "$HOME/.cache/polonium-saver-state" 2>/dev/null || true
-    rm -rf -- "$HOME/.local/share/polonium-saver/cache" "$HOME/.local/share/polonium/cache" 2>/dev/null || true
-    # Remove any stray cache files under ~/.config/polonium but keep settings.json
-    if [ -d "$HOME/.config/polonium" ]; then
-        find "$HOME/.config/polonium" -mindepth 1 -maxdepth 1 ! -name settings.json -exec rm -rf -- {} + 2>/dev/null || true
+# The rename from Polonium keeps user data: move the old kwinrc groups over
+# byte-for-byte and copy the settings store, so layouts and options survive.
+# Renaming the group header in place is what keeps escaped layout text intact;
+# reading values back and rewriting them would escape the escapes.
+migrate_from_polonium() {
+    local old_cfg=$HOME/.config/polonium
+    local new_cfg=$HOME/.config/folonium
+
+    if [ ! -e "$new_cfg/settings.json" ] && [ -e "$old_cfg/settings.json" ]; then
+        say "Migrating Polonium settings to Folonium"
+        install -d -- "$new_cfg"
+        cp -p -- "$old_cfg/settings.json" "$new_cfg/settings.json"
     fi
-    if [ -d "$HOME/.config/polonium-saver" ]; then
-        find "$HOME/.config/polonium-saver" -mindepth 1 -maxdepth 1 ! -name settings.json -exec rm -rf -- {} + 2>/dev/null || true
+
+    command -v python3 >/dev/null 2>&1 || return 0
+    python3 - "$HOME/.config/kwinrc" <<'PYEOF' || true
+import os, sys
+
+path = sys.argv[1]
+if not os.path.exists(path):
+    raise SystemExit(0)
+
+moves = {
+    "[Script-polonium]": "[Script-folonium]",
+    "[Effect-betteroverview]": "[Effect-foloniumoverview]",
+}
+
+with open(path, encoding="utf-8") as fh:
+    lines = fh.read().splitlines(keepends=True)
+
+present = {line.strip() for line in lines if line.startswith("[")}
+changed = False
+out = []
+for line in lines:
+    key = line.strip()
+    if key in moves and moves[key] not in present:
+        out.append(line.replace(key, moves[key], 1))
+        changed = True
+    else:
+        out.append(line)
+
+if changed:
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.writelines(out)
+    print("  moved old kwinrc groups to the folonium names")
+PYEOF
+}
+
+clear_folonium_cache() {
+    # Clear folonium saver cache/state only; keep settings.json and kwinrc.
+    rm -rf -- "$HOME/.cache/folonium" "$HOME/.cache/folonium-saver" "$HOME/.cache/folonium-saver-state" 2>/dev/null || true
+    rm -rf -- "$HOME/.local/share/folonium-saver/cache" "$HOME/.local/share/folonium/cache" 2>/dev/null || true
+    # Remove any stray cache files under ~/.config/folonium but keep settings.json
+    if [ -d "$HOME/.config/folonium" ]; then
+        find "$HOME/.config/folonium" -mindepth 1 -maxdepth 1 ! -name settings.json -exec rm -rf -- {} + 2>/dev/null || true
+    fi
+    if [ -d "$HOME/.config/folonium-saver" ]; then
+        find "$HOME/.config/folonium-saver" -mindepth 1 -maxdepth 1 ! -name settings.json -exec rm -rf -- {} + 2>/dev/null || true
     fi
 }
 
 install_all() {
     check_sources
+    migrate_from_polonium
     install_script
     install_effect
-    clear_polonium_cache
+    clear_folonium_cache
     install_saver
-    set_plugin poloniumEnabled true
-    set_plugin betteroverviewEnabled true
+    set_plugin foloniumEnabled true
+    set_plugin foloniumoverviewEnabled true
     if command -v kwriteconfig6 >/dev/null 2>&1; then
-        kwriteconfig6 --file kwinrc --group Script-polonium --key UseDBusSaver true --type bool
+        kwriteconfig6 --file kwinrc --group Script-folonium --key UseDBusSaver true --type bool
     elif command -v kwriteconfig5 >/dev/null 2>&1; then
-        kwriteconfig5 --file kwinrc --group Script-polonium --key UseDBusSaver true --type bool
+        kwriteconfig5 --file kwinrc --group Script-folonium --key UseDBusSaver true --type bool
     fi
     restart_saver
     reload_kwin
@@ -162,25 +211,25 @@ install_all() {
 }
 
 uninstall_all() {
-    say "Disabling Polonium and the overview in kwinrc"
-    set_plugin poloniumEnabled false
-    set_plugin betteroverviewEnabled false
+    say "Disabling Folonium and the overview in kwinrc"
+    set_plugin foloniumEnabled false
+    set_plugin foloniumoverviewEnabled false
 
     if kwin_running; then
         say "Unloading KWin script and effect"
-        qdbus_cmd org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript polonium >/dev/null 2>&1 || true
-        qdbus_cmd org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect betteroverview >/dev/null 2>&1 || true
+        qdbus_cmd org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript folonium >/dev/null 2>&1 || true
+        qdbus_cmd org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect foloniumoverview >/dev/null 2>&1 || true
     fi
 
     say "Stopping saver"
-    pkill -f -- "$SAVER_DIR/polonium_saver.py" >/dev/null 2>&1 || true
+    pkill -f -- "$SAVER_DIR/folonium_saver.py" >/dev/null 2>&1 || true
 
     say "Removing installed files"
     rm -rf -- "$SCRIPT_DIR" "$EFFECT_DIR" "$SAVER_DIR"
     rm -f -- "$SERVICE_FILE" "$SETTINGS_APP"
 
-    clear_polonium_cache
-    say "Done. Your settings in ~/.config/polonium/settings.json and kwinrc were kept."
+    clear_folonium_cache
+    say "Done. Your settings in ~/.config/folonium/settings.json and kwinrc were kept."
 }
 
 case ${1:-install} in

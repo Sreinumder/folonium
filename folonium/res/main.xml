@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0">
+    <kcfgfile name=""/>
+    <group name="">
+        <entry name="RebuildDelay" type="int"><default>10</default></entry>
+        <entry name="TileResizeAmount" type="int"><default>10</default></entry>
+        <entry name="UseDBusSaver" type="bool"><default>false</default></entry>
+
+        <entry name="LogLevel" type="int"><default>1</default></entry>
+
+        <entry name="IgnoreWindowClasses" type="string"><default>krunner, yakuake, kded, polkit, plasmashell, xwaylandvideobridge, kwin_wayland</default></entry>
+        <entry name="IgnoreWindowCaptions" type="string"><default></default></entry>
+        <entry name="UntileWindowClasses" type="string"><default></default></entry>
+        <entry name="UntileWindowCaptions" type="string"><default></default></entry>
+
+        <entry name="RawRegex" type="bool"><default>false</default></entry>
+        <entry name="Borders" type="int"><default>4</default></entry>
+        <entry name="TiledWindowsBelow" type="bool"><default>true</default></entry>
+        <entry name="MouseFollowsFocus" type="bool"><default>false</default></entry>
+        <entry name="MouseFollowsFocusDelay" type="int"><default>50</default></entry>
+        <entry name="MouseFollowsFocusIgnoreEffects" type="string"><default>foloniumoverview</default></entry>
+        <entry name="TilePopups" type="bool"><default>false</default></entry>
+        <entry name="WindowDragPolicy" type="int"><default>1</default></entry>
+        <entry name="DragRetilePoint" type="int"><default>0</default></entry>
+        <entry name="DragWindowSize" type="int"><default>1</default></entry>
+        <entry name="DragWindowSizePercent" type="int"><default>100</default></entry>
+        <entry name="FloatingSpawnPoint" type="int"><default>0</default></entry>
+
+        <entry name="CustomMirrorLayout" type="bool"><default>false</default></entry>
+        <entry name="CustomRotateLayout" type="bool"><default>false</default></entry>
+        <entry name="CustomMonocle" type="bool"><default>false</default></entry>
+        <entry name="CustomRatios" type="string"><default>2:1 3:2 1:1 2:3 1:2&#10;1:1:1 2:1:1 1:2:1 1:1:2</default></entry>
+        <entry name="CustomLayout1" type="string"><default>[1]&#10;[1 1] /1 1/&#10;[1 2] [1 1 1]&#10;[2 2] [1 2 1] [1 1 2] [1 3]</default></entry>
+        <entry name="CustomLayout2" type="string"><default></default></entry>
+        <entry name="CustomLayout3" type="string"><default></default></entry>
+        <entry name="CustomLayout4" type="string"><default></default></entry>
+        <entry name="CustomLayout5" type="string"><default></default></entry>
+        <entry name="CustomLayout6" type="string"><default></default></entry>
+        <entry name="CustomLayout7" type="string"><default></default></entry>
+        <entry name="CustomLayout8" type="string"><default></default></entry>
+        <entry name="CustomLayout9" type="string"><default></default></entry>
+    </group>
+</kcfg>

@@ -1,0 +1,840 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>KWin::FoloniumConfigForm</class>
+ <widget class="QWidget" name="KWin::FoloniumConfigForm">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>603</width>
+    <height>489</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Folonium</string>
+  </property>
+  <layout class="QGridLayout" name="gridLayout">
+   <item row="2" column="1">
+    <layout class="QVBoxLayout" name="verticalLayout">
+     <item>
+      <widget class="QTabWidget" name="tabWidget">
+       <property name="currentIndex">
+        <number>0</number>
+       </property>
+       <widget class="QWidget" name="General">
+        <attribute name="title">
+         <string>General</string>
+        </attribute>
+        <layout class="QGridLayout" name="gridLayout_10">
+         <item row="9" column="2" colspan="2">
+          <spacer name="generalSpacer">
+           <property name="orientation">
+            <enum>Qt::Orientation::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item row="5" column="2">
+          <widget class="QLabel" name="mouseFollowsFocusLabel">
+           <property name="text">
+            <string>Mouse Follows Focus</string>
+           </property>
+          </widget>
+         </item>
+         <item row="5" column="3">
+          <widget class="QCheckBox" name="kcfg_MouseFollowsFocus">
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+         <item row="6" column="2">
+          <widget class="QLabel" name="mouseFollowsFocusDelayLabel">
+           <property name="text">
+            <string>Focus Warp Delay</string>
+           </property>
+          </widget>
+         </item>
+         <item row="6" column="3">
+          <widget class="QSpinBox" name="kcfg_MouseFollowsFocusDelay">
+           <property name="suffix">
+            <string>ms</string>
+           </property>
+           <property name="minimum">
+            <number>0</number>
+           </property>
+           <property name="maximum">
+            <number>2000</number>
+           </property>
+           <property name="value">
+            <number>50</number>
+           </property>
+          </widget>
+         </item>
+         <item row="7" column="2">
+          <widget class="QLabel" name="mouseFollowsFocusIgnoreEffectsLabel">
+           <property name="text">
+            <string>Ignore Effects</string>
+           </property>
+          </widget>
+         </item>
+         <item row="7" column="3">
+          <widget class="QLineEdit" name="kcfg_MouseFollowsFocusIgnoreEffects"/>
+         </item>
+         <item row="2" column="3">
+          <widget class="QCheckBox" name="kcfg_UseDBusSaver">
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="2">
+          <widget class="QLabel" name="rebuildDelayLabel">
+           <property name="text">
+            <string>Rebuild Delay</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="3">
+          <widget class="QComboBox" name="kcfg_LogLevel">
+           <property name="currentIndex">
+            <number>1</number>
+           </property>
+           <item>
+            <property name="text">
+             <string>Error</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Warn</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Log</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Debug</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="2" column="2">
+          <widget class="QLabel" name="useDBusSaver">
+           <property name="text">
+            <string>Use DBus Saver</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="3">
+          <widget class="QSpinBox" name="kcfg_RebuildDelay">
+           <property name="suffix">
+            <string>ms</string>
+           </property>
+           <property name="minimum">
+            <number>1</number>
+           </property>
+           <property name="maximum">
+            <number>1000</number>
+           </property>
+           <property name="value">
+            <number>10</number>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="3">
+          <widget class="QSpinBox" name="kcfg_TileResizeAmount">
+           <property name="suffix">
+            <string>px</string>
+           </property>
+           <property name="minimum">
+            <number>1</number>
+           </property>
+           <property name="maximum">
+            <number>1000</number>
+           </property>
+           <property name="value">
+            <number>10</number>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="2">
+          <widget class="QLabel" name="logLevelLabel">
+           <property name="text">
+            <string>Log Level</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="2">
+          <widget class="QLabel" name="tileResizeAmountLabel">
+           <property name="text">
+            <string>Tile Resize Amount</string>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="2" colspan="2">
+          <widget class="QLabel" name="debugTitle">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="text">
+            <string>Debug</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="Engine">
+        <attribute name="title">
+         <string>Engine</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="engineLayout">
+         <item>
+          <widget class="QLabel" name="engineInfoLabel">
+           <property name="text">
+            <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Folonium tiles with one engine. Layouts come from a small slicing grammar: &lt;code&gt;[ ]&lt;/code&gt; puts windows side by side in columns, &lt;code&gt;/ /&lt;/code&gt; stacks them in rows, and a number is that many windows stacked along the other axis. For example, &lt;code&gt;[1 2]&lt;/code&gt; is one window beside a column of two.&lt;/p&gt;&lt;p&gt;Add custom layouts in the tabs below. Each tab is a layout set: write one or more layouts separated by spaces or newlines. L1 is the default set; pick another set from the layout menu. The largest layout in the set that fits the open windows is used; extra windows float. If no layout fits, all windows float. Split ratios are shared by every layout and live in the field above the tabs: whitespace-separated options such as &lt;code&gt;2:1 3:2 1:1 2:3 1:2&lt;/code&gt; for two-child splits and &lt;code&gt;1:1:1 2:1:1 1:2:1 1:1:2&lt;/code&gt; for three-child splits. Horizontal and vertical splits keep separate selections; cycle them from the layout menu or their shortcuts.&lt;/p&gt;&lt;p&gt;Rotations and reflections of the same layout are not duplicated. A layout tiles as many windows as it has slots; extra windows float. Per-display settings such as mirror and rotate are in the layout menu. The KWin row there switches this display to KWin's own tiling and back.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+           </property>
+           <property name="wordWrap">
+            <bool>true</bool>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+           </property>
+          </widget>
+         </item>
+
+         <item>
+          <widget class="QLabel" name="customLayoutInfoLabel">
+           <property name="text">
+            <string>Custom layouts: each tab is a layout set. Write one or more layouts separated by spaces or newlines. L1 is the default; pick another set from the layout menu. If the selected set has no layout for the current window count, the windows stay floating.</string>
+           </property>
+           <property name="wordWrap">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="customRatiosLabel">
+           <property name="text">
+            <string>Shared split ratios. Two-child options apply to [1 1], [1 2], [1 3] and the stacks in [2 2]; three-child options apply to [1 1 1] and the stack in [1 3].</string>
+           </property>
+           <property name="wordWrap">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPlainTextEdit" name="kcfg_CustomRatios">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>70</height>
+            </size>
+           </property>
+           <property name="placeholderText">
+            <string>2:1 3:2 1:1 2:3 1:2&#10;1:1:1 2:1:1 1:2:1 1:1:2</string>
+           </property>
+           <property name="tabChangesFocus">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QTabWidget" name="customLayoutTabs">
+           <property name="currentIndex">
+            <number>0</number>
+           </property>
+           <widget class="QWidget" name="customLayoutTab1">
+            <attribute name="title">
+             <string>L1</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="customLayoutTabLayout1">
+             <item>
+              <widget class="QPlainTextEdit" name="kcfg_CustomLayout1">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>100</height>
+                </size>
+               </property>
+               <property name="placeholderText">
+                <string>One or more layouts, separated by spaces or newlines.&#10;Example: [1 2]</string>
+               </property>
+               <property name="tabChangesFocus">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="customLayoutTab2">
+            <attribute name="title">
+             <string>L2</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="customLayoutTabLayout2">
+             <item>
+              <widget class="QPlainTextEdit" name="kcfg_CustomLayout2">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>100</height>
+                </size>
+               </property>
+               <property name="placeholderText">
+                <string>One or more layouts, separated by spaces or newlines.&#10;Example: [1 2]</string>
+               </property>
+               <property name="tabChangesFocus">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="customLayoutTab3">
+            <attribute name="title">
+             <string>L3</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="customLayoutTabLayout3">
+             <item>
+              <widget class="QPlainTextEdit" name="kcfg_CustomLayout3">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>100</height>
+                </size>
+               </property>
+               <property name="placeholderText">
+                <string>One or more layouts, separated by spaces or newlines.&#10;Example: [1 2]</string>
+               </property>
+               <property name="tabChangesFocus">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="customLayoutTab4">
+            <attribute name="title">
+             <string>L4</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="customLayoutTabLayout4">
+             <item>
+              <widget class="QPlainTextEdit" name="kcfg_CustomLayout4">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>100</height>
+                </size>
+               </property>
+               <property name="placeholderText">
+                <string>One or more layouts, separated by spaces or newlines.&#10;Example: [1 2]</string>
+               </property>
+               <property name="tabChangesFocus">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="customLayoutTab5">
+            <attribute name="title">
+             <string>L5</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="customLayoutTabLayout5">
+             <item>
+              <widget class="QPlainTextEdit" name="kcfg_CustomLayout5">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>100</height>
+                </size>
+               </property>
+               <property name="placeholderText">
+                <string>One or more layouts, separated by spaces or newlines.&#10;Example: [1 2]</string>
+               </property>
+               <property name="tabChangesFocus">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="customLayoutTab6">
+            <attribute name="title">
+             <string>L6</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="customLayoutTabLayout6">
+             <item>
+              <widget class="QPlainTextEdit" name="kcfg_CustomLayout6">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>100</height>
+                </size>
+               </property>
+               <property name="placeholderText">
+                <string>One or more layouts, separated by spaces or newlines.&#10;Example: [1 2]</string>
+               </property>
+               <property name="tabChangesFocus">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="customLayoutTab7">
+            <attribute name="title">
+             <string>L7</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="customLayoutTabLayout7">
+             <item>
+              <widget class="QPlainTextEdit" name="kcfg_CustomLayout7">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>100</height>
+                </size>
+               </property>
+               <property name="placeholderText">
+                <string>One or more layouts, separated by spaces or newlines.&#10;Example: [1 2]</string>
+               </property>
+               <property name="tabChangesFocus">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="customLayoutTab8">
+            <attribute name="title">
+             <string>L8</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="customLayoutTabLayout8">
+             <item>
+              <widget class="QPlainTextEdit" name="kcfg_CustomLayout8">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>100</height>
+                </size>
+               </property>
+               <property name="placeholderText">
+                <string>One or more layouts, separated by spaces or newlines.&#10;Example: [1 2]</string>
+               </property>
+               <property name="tabChangesFocus">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="customLayoutTab9">
+            <attribute name="title">
+             <string>L9</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="customLayoutTabLayout9">
+             <item>
+              <widget class="QPlainTextEdit" name="kcfg_CustomLayout9">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>100</height>
+                </size>
+               </property>
+               <property name="placeholderText">
+                <string>One or more layouts, separated by spaces or newlines.&#10;Example: [1 2]</string>
+               </property>
+               <property name="tabChangesFocus">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </widget>
+         </item>
+         <item>
+          <spacer name="engineVerticalSpacer">
+           <property name="orientation">
+            <enum>Qt::Orientation::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="Windows">
+        <attribute name="title">
+         <string>Windows</string>
+        </attribute>
+        <layout class="QGridLayout" name="gridLayout_5">
+         <item row="3" column="2">
+          <widget class="QLineEdit" name="kcfg_IgnoreWindowCaptions"/>
+         </item>
+         <item row="7" column="0">
+          <widget class="QLabel" name="bordersLabel">
+           <property name="text">
+            <string>Borders</string>
+           </property>
+          </widget>
+         </item>
+         <item row="10" column="2">
+          <widget class="QComboBox" name="kcfg_WindowDragPolicy">
+           <property name="currentIndex">
+            <number>1</number>
+           </property>
+           <item>
+            <property name="text">
+             <string>Always Tile</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Only Retile</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Never Tile</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="10" column="0">
+          <widget class="QLabel" name="windowDragPolicyLabel">
+           <property name="text">
+            <string>Window Dragging Policy</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="0" colspan="3">
+          <widget class="QLabel" name="regexInfoLabel">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="text">
+            <string>All text fields accept regex. Read manual for more details.</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item row="8" column="0">
+          <widget class="QLabel" name="tiledWindowsBelowLabel">
+           <property name="text">
+            <string>Place Tiled Windows Below</string>
+           </property>
+          </widget>
+         </item>
+         <item row="9" column="2">
+          <widget class="QCheckBox" name="kcfg_TilePopups">
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="2">
+          <widget class="QLineEdit" name="kcfg_IgnoreWindowClasses">
+           <property name="text">
+            <string>krunner, yakuake, kded, polkit, plasmashell, xwaylandvideobridge, kwin_wayland</string>
+           </property>
+          </widget>
+         </item>
+         <item row="11" column="0">
+          <widget class="QLabel" name="dragRetilePointLabel">
+           <property name="text">
+            <string>Drag Retile Point</string>
+           </property>
+          </widget>
+         </item>
+         <item row="11" column="2">
+          <widget class="QComboBox" name="kcfg_DragRetilePoint">
+           <item>
+            <property name="text">
+             <string>Mouse Cursor</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Window Center</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Window Topbar</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="12" column="0">
+          <widget class="QLabel" name="dragWindowSizeLabel">
+           <property name="text">
+            <string>Dragged Window Size</string>
+           </property>
+          </widget>
+         </item>
+         <item row="12" column="2">
+          <widget class="QComboBox" name="kcfg_DragWindowSize">
+           <item>
+            <property name="text">
+             <string>Natural Size</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Custom Size</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="13" column="0">
+          <widget class="QLabel" name="dragWindowSizePercentLabel">
+           <property name="text">
+            <string>Custom Drag Size (%)</string>
+           </property>
+          </widget>
+         </item>
+         <item row="13" column="2">
+          <widget class="QSpinBox" name="kcfg_DragWindowSizePercent">
+           <property name="minimum">
+            <number>10</number>
+           </property>
+           <property name="maximum">
+            <number>100</number>
+           </property>
+           <property name="value">
+            <number>100</number>
+           </property>
+          </widget>
+         </item>
+         <item row="14" column="0">
+          <widget class="QLabel" name="floatingSpawnPointLabel">
+           <property name="text">
+            <string>Floating Window Spawn Point</string>
+           </property>
+          </widget>
+         </item>
+         <item row="14" column="2">
+          <widget class="QComboBox" name="kcfg_FloatingSpawnPoint">
+           <item>
+            <property name="text">
+             <string>KWin Default</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Top Left</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Top</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Top Right</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Left</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Center</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Right</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Bottom Left</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Bottom</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Bottom Right</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="15" column="0" colspan="3">
+          <spacer name="windowsVerticalSpacer">
+           <property name="orientation">
+            <enum>Qt::Orientation::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item row="7" column="2">
+          <widget class="QComboBox" name="kcfg_Borders">
+           <property name="minimumSize">
+            <size>
+             <width>200</width>
+             <height>32</height>
+            </size>
+           </property>
+           <property name="currentIndex">
+            <number>4</number>
+           </property>
+           <item>
+            <property name="text">
+             <string>No Borders</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Border Floating Only</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Border Active Only</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Border Floating/Active</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Border All</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="8" column="2">
+          <widget class="QCheckBox" name="kcfg_TiledWindowsBelow">
+           <property name="text">
+            <string/>
+           </property>
+           <property name="checked">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item row="6" column="0">
+          <widget class="QLabel" name="rawRegexLabel">
+           <property name="text">
+            <string>Use Raw Regex</string>
+           </property>
+          </widget>
+         </item>
+         <item row="9" column="0">
+          <widget class="QLabel" name="tilePopupsLabel">
+           <property name="text">
+            <string>Tile Popup Windows</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="0">
+          <widget class="QLabel" name="ignoreWindowClassesLabel">
+           <property name="text">
+            <string>Ignore Window Classes</string>
+           </property>
+          </widget>
+         </item>
+         <item row="6" column="2">
+          <widget class="QCheckBox" name="kcfg_RawRegex">
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="0">
+          <widget class="QLabel" name="ignoreWindowCaptionsLabel">
+           <property name="text">
+            <string>Ignore Window Captions</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="0">
+          <widget class="QLabel" name="untileWindowClassesLabel">
+           <property name="text">
+            <string>Untile Window Classes</string>
+           </property>
+          </widget>
+         </item>
+         <item row="5" column="0">
+          <widget class="QLabel" name="untileWindowCaptionsLabel">
+           <property name="text">
+            <string>Untile Window Captions</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="2">
+          <widget class="QLineEdit" name="kcfg_UntileWindowClasses"/>
+         </item>
+         <item row="5" column="2">
+          <widget class="QLineEdit" name="kcfg_UntileWindowCaptions"/>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item row="0" column="1">
+    <widget class="QLabel" name="label">
+     <property name="text">
+      <string>Changes only apply after logging out or restarting KWin!</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignmentFlag::AlignCenter</set>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="1">
+    <widget class="QLabel" name="label_2">
+     <property name="text">
+      <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;https://polonium.vaughanm.xyz/configuration&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#f6b0e8;&quot;&gt;Manual - https://polonium.vaughanm.xyz/configuration (Right click to copy link)&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignmentFlag::AlignCenter</set>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

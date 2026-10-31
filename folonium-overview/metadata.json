@@ -1,0 +1,25 @@
+{
+    "KPackageStructure": "KWin/Effect",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "mj0x0"
+            },
+            {
+                "Name": "Sreinumder"
+            }
+        ],
+        "Category": "Window Management",
+        "Description": "Folonium desktops: each desktop is tiled the way Folonium tiles it, labeled with its layout, with MPRIS media controls",
+        "EnabledByDefault": false,
+        "Id": "foloniumoverview",
+        "License": "GPL-2.0-or-later",
+        "Name": "Folonium Overview",
+        "Version": "0.2.0"
+    },
+    "X-KDE-ConfigModule": "kcm_kwin4_genericscripted",
+    "X-KDE-Ordering": 60,
+    "X-KWin-Border-Activate": true,
+    "X-Plasma-API": "declarativescript",
+    "X-KDE-PluginKeyword": "foloniumoverview"
+}

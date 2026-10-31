@@ -1,0 +1,25 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "vaughanm1@protonmail.com",
+                "Name": "Vaughan Milliman"
+            },
+            {
+                "Name": "Sreinumder"
+            }
+        ],
+        "Description": "Rule-based autotiling for KWin 6: you decide where windows go, not a fixed engine",
+        "Icon": "preferences-system-windows-effect-presentwindows",
+        "Id": "%NAME%",
+        "License": "MIT",
+        "Name": "Folonium",
+        "Version": "%VERSION%"
+    },
+    "X-KDE-ConfigModule": "kwin/effects/configs/kcm_kwin4_genericscripted",
+    "X-KDE-PluginKeyword": "folonium",
+    "X-Plasma-API": "declarativescript",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-MainScript": "ui/main.qml"
+}
