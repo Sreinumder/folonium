@@ -3802,12 +3802,12 @@ var Controller = class {
   queueEvent(ev, forcePush = false) {
     if (this.processingEvents && !forcePush) return;
     this.eventQueue.push(ev);
-    this.eventTimer.start();
+    if (this.eventTimer && typeof this.eventTimer.start === "function") this.eventTimer.start();
   }
   queuePostEvent(ev, forcePush = false) {
     if (this.processingEvents && !forcePush) return;
     this.postEventQueue.push(ev);
-    this.eventTimer.start();
+    if (this.eventTimer && typeof this.eventTimer.start === "function") this.eventTimer.start();
   }
   processEvents() {
     this.processingEvents = true;
