@@ -73,6 +73,9 @@ FocusScope {
     // The real desktop and window under the pointer when the overview opened.
     property QtObject cursorDesktop: null
     property QtObject cursorWindow: null
+    // Where the pointer really was, and whether it was moved into the preview.
+    property point openPointer: Qt.point(0, 0)
+    property bool openTransposed: false
     // The desktop that was active when the overview opened; quitting without
     // a direct choice returns there.
     property QtObject originDesktop: null
@@ -245,13 +248,16 @@ FocusScope {
                 root.hoveredDesktopNumber = 0;
                 // The pointer may already rest on a desktop; start from where
                 // it really is instead of waiting for the first move.
-                root.mouseX = KWinComponents.Workspace.cursorPos.x;
-                root.mouseY = KWinComponents.Workspace.cursorPos.y;
+                root.openPointer = Qt.point(KWinComponents.Workspace.cursorPos.x, KWinComponents.Workspace.cursorPos.y);
+                root.mouseX = root.openPointer.x;
+                root.mouseY = root.openPointer.y;
                 root.pointerMoved = false;
+                root.openTransposed = false;
                 root.updateCursorTarget();
                 root.dropTargetDesktop = null;
                 statesCall.call();
                 root.rebuildGroups();
+                root.transposeOpenPointer();
             } else {
                 afterDropTimer.stop();
                 root.dropTargetDesktop = null;
@@ -260,8 +266,12 @@ FocusScope {
                 if (!root.desktopPicked && root.originDesktop !== null) {
                     root.switchTo(root.originDesktop);
                 }
+                if (!root.desktopPicked && root.openTransposed) {
+                    root.warpPointer(root.openPointer, 150);
+                }
                 root.originDesktop = null;
                 root.desktopPicked = false;
+                root.openTransposed = false;
                 root.cursorDesktop = null;
                 root.cursorWindow = null;
             }
@@ -1021,11 +1031,59 @@ FocusScope {
         method: "WarpPointer"
     }
     // p is in screen coordinates: the click transposed off the tile.
-    function warpPointer(p) {
+    function warpPointer(p, delay) {
         const x = Math.max(root.screenX, Math.min(root.screenX + root.screenW - 1, Math.round(p.x)));
         const y = Math.max(root.screenY, Math.min(root.screenY + root.screenH - 1, Math.round(p.y)));
-        warpCall.arguments = [x, y];
+        warpCall.arguments = [x, y, delay === undefined ? 0 : delay];
         warpCall.call();
+    }
+
+    // On open the pointer is still at its real screen position. Move it into
+    // the preview of the desktop and window it is over, so the overview starts
+    // where the user came from instead of at an arbitrary screen point.
+    function transposeOpenPointer() {
+        const d = root.cursorDesktop !== null ? root.cursorDesktop : root.originDesktop;
+        if (d === null) {
+            return;
+        }
+        let index = -1;
+        for (let i = 0; i < desktops.length; i++) {
+            if (desktops[i].x11DesktopNumber === d.x11DesktopNumber) {
+                index = i;
+                break;
+            }
+        }
+        const g = index >= 0 ? root.groupFor(index) : null;
+        if (g === null || g.w <= 0 || g.h <= 0 || !(g.s > 0)) {
+            return;
+        }
+        const p = root.openPointer;
+        let x = g.x + (p.x - root.screenX) * g.s;
+        let y = g.y + (p.y - root.screenY) * g.s;
+        const w = root.cursorWindow;
+        if (w !== null) {
+            const fx = w.width > 0 ? Math.max(0, Math.min(1, (p.x - w.x) / w.width)) : 0.5;
+            const fy = w.height > 0 ? Math.max(0, Math.min(1, (p.y - w.y) / w.height)) : 0.5;
+            const id = String(w.internalId);
+            const at = g.monoWindows !== undefined ? g.monoWindows.findIndex(c => String(c.internalId) === id) : -1;
+            if (at >= 0 && g.monoMode === "cells") {
+                const cw = g.w / Math.max(1, g.monoCols);
+                const ch = g.h / Math.max(1, g.monoRows);
+                x = g.x + (at % g.monoCols) * cw + fx * cw;
+                y = g.y + Math.floor(at / g.monoCols) * ch + fy * ch;
+            } else if (at >= 0 && g.monoMode === "preview" && g.previewRects !== null) {
+                const r = g.previewRects[at];
+                if (r !== undefined) {
+                    x = g.x + (r.x + fx * r.w) * g.w;
+                    y = g.y + (r.y + fy * r.h) * g.h;
+                }
+            }
+        }
+        root.mouseX = x;
+        root.mouseY = y;
+        root.pointerMoved = false;
+        root.openTransposed = true;
+        root.warpPointer(Qt.point(root.screenX + x, root.screenY + y), 0);
     }
 
     function activateWindow(window, desktop, at) {
@@ -1041,7 +1099,7 @@ FocusScope {
         }
         KWinComponents.Workspace.activeWindow = window;
         if (at !== undefined && at !== null) {
-            root.warpPointer(at);
+            root.warpPointer(at, 150);
         }
         effect.deactivate();
     }
@@ -1056,7 +1114,7 @@ FocusScope {
         requestCall.arguments = [JSON.stringify({ t: "tiled", id: String(window.internalId) })];
         requestCall.call();
         if (at !== undefined && at !== null) {
-            root.warpPointer(at);
+            root.warpPointer(at, 150);
         }
         effect.deactivate();
     }

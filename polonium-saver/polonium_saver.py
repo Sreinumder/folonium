@@ -499,7 +499,7 @@ class Saver:
         if member == "GetCursorPos":
             return ("ii", (self.cursor_x, self.cursor_y))
         if member == "WarpPointer":
-            self.warp_pointer(args[0], args[1])
+            self.warp_pointer(args[0], args[1], args[2])
             return ("", ())
         if member == "Introspect":
             return ("s", (INTROSPECTION_XML,))
@@ -646,7 +646,7 @@ class Saver:
         except (ValueError, TypeError):
             pass
 
-    def warp_pointer(self, x, y):
+    def warp_pointer(self, x, y, delay_ms=0):
         """Move the real pointer, off the D-Bus loop so polling keeps going.
 
         The overview hands us the screen point a click was transposed to.
@@ -654,13 +654,17 @@ class Saver:
         towards the target; a big single step would be mouse-accelerated.
         """
         threading.Thread(
-            target=self._warp_pointer, args=(int(x), int(y)), daemon=True
+            target=self._warp_pointer,
+            args=(int(x), int(y), max(0, int(delay_ms)) / 1000.0),
+            daemon=True,
         ).start()
 
-    def _warp_pointer(self, x, y):
-        # Let the overview finish closing before the pointer jumps.
-        time.sleep(0.15)
-        for _ in range(4):
+    def _warp_pointer(self, x, y, delay=0.0):
+        # A closing overview fades out first; an opening one is already there.
+        if delay > 0:
+            time.sleep(delay)
+        prev = None
+        for _ in range(6):
             pos = pointer_pos()
             if pos is None:
                 log("warp: kdotool getmouselocation failed")
@@ -668,6 +672,10 @@ class Saver:
             dx, dy = x - pos[0], y - pos[1]
             if abs(dx) <= 1 and abs(dy) <= 1:
                 return
+            if pos == prev:
+                # A step that moved nothing will keep moving nothing.
+                return
+            prev = pos
             try:
                 subprocess.run(
                     ["ydotool", "mousemove", "--", str(dx), str(dy)],
@@ -738,6 +746,7 @@ INTROSPECTION_XML = (
     '    <method name="WarpPointer">\n'
     '      <arg name="x" type="i" direction="in"/>\n'
     '      <arg name="y" type="i" direction="in"/>\n'
+    '      <arg name="delay_ms" type="i" direction="in"/>\n'
     "    </method>\n"
     "  </interface>\n"
     "</node>\n"
