@@ -1212,6 +1212,12 @@ var CustomEngine = class {
     const rootTile = new Tile();
     this.tileMap.clear();
     this.windowTiles.clear();
+    // A lone window has no split to rotate or mirror. Clearing the view flags
+    // here stops the old state from shaping the next window added.
+    if (this.windows.length === 1) {
+      this.settings.rotateLayout = false;
+      this.settings.mirrorLayout = false;
+    }
     if (this.settings.monocle) {
       // One tile holds every window, so KWin stacks them full size and the
       // layout machinery stays out of the way.
