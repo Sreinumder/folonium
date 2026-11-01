@@ -22,7 +22,6 @@
         <entry name="TilePopups" type="bool"><default>false</default></entry>
         <entry name="WindowDragPolicy" type="int"><default>1</default></entry>
         <entry name="DragRetilePoint" type="int"><default>0</default></entry>
-        <entry name="DragWindowSize" type="int"><default>1</default></entry>
         <entry name="DragWindowSizePercent" type="int"><default>100</default></entry>
         <entry name="FloatingSpawnPoint" type="int"><default>0</default></entry>
 

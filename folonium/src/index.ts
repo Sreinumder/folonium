@@ -1216,6 +1216,12 @@ var CustomEngine = class {
   }
   buildLayout() {
     const rootTile = new Tile();
+    // Disown any tracked window beyond the selected layout's capacity so it
+    // becomes floating instead of occupying a ghost slot.
+    const capacity = this.tiledCapacity();
+    if (this.windows.length > capacity) {
+      this.windows = this.windows.slice(0, capacity);
+    }
     this.tileMap.clear();
     this.windowTiles.clear();
     // A lone window has no split to rotate or mirror. Clearing the view flags
@@ -1352,10 +1358,31 @@ var CustomEngine = class {
   windowActivated(window) {
     return false;
   }
+  tiledCapacity() {
+    if (this.settings !== void 0 && this.settings.monocle === true) {
+      return CUSTOM_MAX_WINDOWS;
+    }
+    const set = this.selectedCustomLayoutSet();
+    let max = 0;
+    if (set !== null && Array.isArray(set.layouts)) {
+      for (const layout of set.layouts) {
+        if (typeof layout.count === "number" && layout.count > max) {
+          max = layout.count;
+        }
+      }
+    }
+    return max > 0 ? max : CUSTOM_MAX_WINDOWS;
+  }
   isFull() {
-    return this.windows.length >= CUSTOM_MAX_WINDOWS;
+    // Only tiled windows count: floating/extraneous windows are ignored so a
+    // fifth window is disowned and floated instead of being squeezed in.
+    const tiled = this.windowTiles instanceof Map ? this.windowTiles.size : 0;
+    return tiled >= this.tiledCapacity();
   }
   windowCount() {
+    if (this.windowTiles instanceof Map && this.windowTiles.size > 0) {
+      return this.windowTiles.size;
+    }
     return this.windows.length;
   }
   // Steps through the selected tab's layouts for the chosen count. A tab with
@@ -1383,7 +1410,9 @@ var CustomEngine = class {
   // The shape monocle would apply if it were switched off, so the overview can
   // preview what a desktop is about to become.
   tiledShapeText() {
-    const count = this.windows.length;
+    const count = this.windowTiles instanceof Map && this.windowTiles.size > 0
+      ? this.windowTiles.size
+      : this.windows.length;
     if (count === 0) {
       return "";
     }
@@ -1395,14 +1424,20 @@ var CustomEngine = class {
   }
   // Cycles which window sits in which leaf.
   rotateWindows(backwards) {
-    if (this.windows.length < 2) {
+    const tiled = this.windowTiles instanceof Map && this.windowTiles.size > 0
+      ? this.windows.filter((w) => this.windowTiles.has(w))
+      : this.windows.slice();
+    if (tiled.length < 2) {
       return false;
     }
     if (backwards) {
-      this.windows.push(this.windows.shift());
+      tiled.push(tiled.shift());
     } else {
-      this.windows.unshift(this.windows.pop());
+      tiled.unshift(tiled.pop());
     }
+    // Rebuild this.windows keeping only tiled windows in rotated order; drop
+    // any tracked-but-floating extras so they stop affecting cycle/counts.
+    this.windows = tiled;
     return true;
   }
   hasWindow(window) {
@@ -1631,9 +1666,8 @@ var Config = class {
     this.tilePopups = rc("TilePopups", false);
     this.windowDragPolicy = rc("WindowDragPolicy", 1 /* Tiled */);
     this.dragRetilePoint = rc("DragRetilePoint", 0 /* Mouse */);
-    // 0 keeps KWin's natural drag size, 1 scales the tiled size by the custom
+    // Dragged window is always shown at the tiled size scaled by the custom
     // percent (100% is exactly the tiled size).
-    this.dragWindowSize = rc("DragWindowSize", 1);
     this.dragWindowSizePercent = rc("DragWindowSizePercent", 100);
     // 0 leaves placement to KWin; 1..9 are the cells of a 3x3 output grid.
     this.floatingSpawnPoint = rc("FloatingSpawnPoint", 0);
@@ -1868,9 +1902,8 @@ var WindowHandler = class {
       return;
     }
     this.dragSizeApplied = true;
-    const mode = config().dragWindowSize;
     const source = this.tiledRect;
-    if (mode < 1 || source === null || source.width <= 0 || source.height <= 0) {
+    if (source === null || source.width <= 0 || source.height <= 0) {
       return;
     }
     const percent = Math.min(100, Math.max(10, Number(config().dragWindowSizePercent) || 100));
@@ -3509,7 +3542,15 @@ var Driver = class {
     return this.tilingEngine.ratioInfo();
   }
   windowCount() {
-    return this.tilingEngine.windowCount();
+    // Prefer the tiled count so floating/disowned windows do not inflate
+    // the popup or settings counts.
+    const eng = this.tilingEngine;
+    const base = eng.windowCount();
+    if (eng.engine && eng.engine.windowTiles instanceof Map) {
+      const size = eng.engine.windowTiles.size;
+      if (size > 0) return size;
+    }
+    return base;
   }
   shapeText() {
     return this.tilingEngine.shapeText();

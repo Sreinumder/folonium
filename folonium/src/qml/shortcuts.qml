@@ -93,7 +93,7 @@ Item {
         id: toggleActiveTilingObj;
         
         name: "FoloniumToggleActiveTiling";
-        text: "Folonium: Toggle Tiling on Active Window";
+        text: "Folonium: Toggle Tiling/Floating for Active Window";
         sequence: "";
     }
     function activateLeft() {

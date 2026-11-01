@@ -214,32 +214,6 @@
           </widget>
          </item>
          <item>
-          <widget class="QLabel" name="customRatiosLabel">
-           <property name="text">
-            <string>Shared split ratios. Two-child options apply to [1 1], [1 2], [1 3] and the stacks in [2 2]; three-child options apply to [1 1 1] and the stack in [1 3].</string>
-           </property>
-           <property name="wordWrap">
-            <bool>true</bool>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPlainTextEdit" name="kcfg_CustomRatios">
-           <property name="minimumSize">
-            <size>
-             <width>0</width>
-             <height>70</height>
-            </size>
-           </property>
-           <property name="placeholderText">
-            <string>2:1 3:2 1:1 2:3 1:2&#10;1:1:1 2:1:1 1:2:1 1:1:2</string>
-           </property>
-           <property name="tabChangesFocus">
-            <bool>true</bool>
-           </property>
-          </widget>
-         </item>
-         <item>
           <widget class="QTabWidget" name="customLayoutTabs">
            <property name="currentIndex">
             <number>0</number>
@@ -254,7 +228,7 @@
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>100</height>
+                 <height>144</height>
                 </size>
                </property>
                <property name="placeholderText">
@@ -277,7 +251,7 @@
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>100</height>
+                 <height>144</height>
                 </size>
                </property>
                <property name="placeholderText">
@@ -300,7 +274,7 @@
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>100</height>
+                 <height>144</height>
                 </size>
                </property>
                <property name="placeholderText">
@@ -323,7 +297,7 @@
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>100</height>
+                 <height>144</height>
                 </size>
                </property>
                <property name="placeholderText">
@@ -346,7 +320,7 @@
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>100</height>
+                 <height>144</height>
                 </size>
                </property>
                <property name="placeholderText">
@@ -369,7 +343,7 @@
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>100</height>
+                 <height>144</height>
                 </size>
                </property>
                <property name="placeholderText">
@@ -392,7 +366,7 @@
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>100</height>
+                 <height>144</height>
                 </size>
                </property>
                <property name="placeholderText">
@@ -415,7 +389,7 @@
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>100</height>
+                 <height>144</height>
                 </size>
                </property>
                <property name="placeholderText">
@@ -438,7 +412,7 @@
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>100</height>
+                 <height>144</height>
                 </size>
                </property>
                <property name="placeholderText">
@@ -451,6 +425,32 @@
              </item>
             </layout>
            </widget>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="customRatiosLabel">
+           <property name="text">
+            <string>Shared split ratios. Two-child options apply to [1 1], [1 2], [1 3] and the stacks in [2 2]; three-child options apply to [1 1 1] and the stack in [1 3].</string>
+           </property>
+           <property name="wordWrap">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPlainTextEdit" name="kcfg_CustomRatios">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>72</height>
+            </size>
+           </property>
+           <property name="placeholderText">
+            <string>2:1 3:2 1:1 2:3 1:2&#10;1:1:1 2:1:1 1:2:1 1:1:2</string>
+           </property>
+           <property name="tabChangesFocus">
+            <bool>true</bool>
+           </property>
           </widget>
          </item>
          <item>
@@ -576,34 +576,13 @@
           </widget>
          </item>
          <item row="12" column="0">
-          <widget class="QLabel" name="dragWindowSizeLabel">
+          <widget class="QLabel" name="dragWindowSizePercentLabel">
            <property name="text">
-            <string>Dragged Window Size</string>
+            <string>Dragged Window Size (%)</string>
            </property>
           </widget>
          </item>
          <item row="12" column="2">
-          <widget class="QComboBox" name="kcfg_DragWindowSize">
-           <item>
-            <property name="text">
-             <string>Natural Size</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>Custom Size</string>
-            </property>
-           </item>
-          </widget>
-         </item>
-         <item row="13" column="0">
-          <widget class="QLabel" name="dragWindowSizePercentLabel">
-           <property name="text">
-            <string>Custom Drag Size (%)</string>
-           </property>
-          </widget>
-         </item>
-         <item row="13" column="2">
           <widget class="QSpinBox" name="kcfg_DragWindowSizePercent">
            <property name="minimum">
             <number>10</number>
