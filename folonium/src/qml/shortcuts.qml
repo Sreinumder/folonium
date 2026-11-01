@@ -43,7 +43,7 @@ Item {
         id: rotateWindowsObj;
         
         name: "FoloniumRotateWindows";
-        text: "Folonium: Rotate Windows";
+        text: "Folonium: Cycle the order of windows";
         sequence: "";
     }
     function cycleHorizontalRatio() {
