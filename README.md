@@ -144,5 +144,10 @@ together — see the next section.
   config groups are left behind unused until you copy them across.
 - Shortcut names changed to `Folonium: …`. Rebind them under System Settings →
   Shortcuts if the old `Polonium: …` entries kept your keys.
+- To clean up all unused keyboard shortcuts (dead `Polonium: …` entries
+  and any other stale bindings), run:
+  ```
+  qdbus org.kde.kglobalaccel /component/kwin org.kde.kglobalaccel.Component.cleanUp
+  ```
 - For showing the Playing media in the overview effect. For browsers it is best to install the plasma-integration plugin.
     - Firefox based browser might show two separate media. You should set `media.hardwaremediakeys.enabled` flag to false.
