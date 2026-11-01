@@ -79,6 +79,21 @@ Item {
         method: "TakeRequest";
     }
 
+    // Whether the overview effect is open, polled by the script. The one-slot
+    // request queue can be overwritten by a click, so this flag is what tells
+    // the script when to put monocle back.
+    function getOverviewOpen() {
+        return getOverviewOpenObj;
+    }
+    DBusCall {
+        id: getOverviewOpenObj;
+
+        service: "xyz.vaughanm.folonium";
+        path: "/saver";
+        dbusInterface: "xyz.vaughanm.folonium";
+        method: "GetOverviewOpen";
+    }
+
     function moveMouseToFocus() {
         return moveMouseToFocusObj;
     }

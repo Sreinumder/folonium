@@ -60,6 +60,19 @@ FocusScope {
     property var emptyDesktops: []
     property var desktopStates: ({})
 
+    // A window tile carries an icon and a title along its bottom edge. A window
+    // shorter than that band has no room for one, and showing a tile that is
+    // mostly title is what made small popups (screen-share pickers, floating
+    // hints) look like broken slivers. Their height is measured here so the
+    // delegate and the title bar agree on one number.
+    readonly property int tileTitleFont: 14
+    readonly property int tileTitleIcon: 20
+    readonly property int tileTitlePad: 8
+    readonly property int tileTitleRow: Math.max(tileTitleIcon, Math.round(tileTitleFont * 1.4))
+    readonly property int tileTitleBand: tileTitleRow + tileTitlePad
+    // Below this the band would cover the thumbnail entirely.
+    readonly property int minTileHeight: tileTitleBand + 6
+
     // A drag is drawn as a ghost above the panel; the source tile hides for a
     // move and dims for a clone. The ghost either lands on a desktop
     // (move/clone/swap) or animates back to where the window is tiled.
@@ -89,6 +102,14 @@ FocusScope {
     // Where the pointer really was, and whether it was moved into the preview.
     property point openPointer: Qt.point(0, 0)
     property bool openTransposed: false
+
+    // KConfigPropertyMap may return booleans as strings (e.g. "false" is still
+    // truthy in QML JS), so coerce explicitly before gating transpose-on-click
+    // warps. Disabling TransposeDesktopClick must truly prevent center warp.
+    function transposeDesktopClickEnabled() {
+        const v = root.cfg.TransposeDesktopClick;
+        return v === true || v === 1 || v === "true" || v === "1";
+    }
     // The desktop that was active when the overview opened; quitting without
     // a direct choice returns there.
     property QtObject originDesktop: null
@@ -206,6 +227,23 @@ FocusScope {
         requestCall.call();
     }
 
+    // Monocle desktops are put back on their tiled layout while the overview is
+    // open, so every desktop shows real tiled windows instead of one full-size
+    // stack. This has to survive a click overwriting the request slot, so it is
+    // its own saver method rather than a SetRequest command.
+    KWinComponents.DBusCall {
+        id: overviewOpenCall
+        service: "xyz.vaughanm.folonium"
+        path: "/saver"
+        dbusInterface: "xyz.vaughanm.folonium"
+        method: "SetOverviewOpen"
+        onFailed: () => {}
+    }
+    function setOverviewOpen(open) {
+        overviewOpenCall.arguments = [open];
+        overviewOpenCall.call();
+    }
+
     // Request window focus from the folonium script (via saver D-Bus).
 
     // Every desktop's layout state in one call, keyed the same way folonium
@@ -252,6 +290,9 @@ FocusScope {
         onTriggered: {
             statesCall.call();
             root.rebuildGroups();
+            // Keep the saver's open flag fresh: it is what tells the script
+            // monocle should stay off, and a stale flag is read as closed.
+            root.setOverviewOpen(true);
         }
     }
     onDesktopCountChanged: rebuildGroups()
@@ -260,6 +301,9 @@ FocusScope {
         target: effect
         function onActivatedChanged() {
             if (effect.activated) {
+                // Put monocle desktops back on their tiled layout: the overview
+                // shows real tiled windows, not a full-size stack per desktop.
+                root.setOverviewOpen(true);
                 root.originDesktop = KWinComponents.Workspace.currentDesktop;
                 root.desktopPicked = false;
                 root.hoveredDesktopNumber = 0;
@@ -282,6 +326,9 @@ FocusScope {
                     root.transposeOpenPointer();
                 }
             } else {
+                // Put monocle back on the desktops that had it, so closing the
+                // overview leaves the desktops exactly as they were found.
+                root.setOverviewOpen(false);
                 afterDropTimer.stop();
                 root.dropTargetDesktop = null;
                 // Quitting without choosing returns to the desktop the
@@ -453,9 +500,11 @@ FocusScope {
                 desktopWindows.push(w);
             }
             const shown = desktopWindows.filter(w => !w.minimized);
-            // A monocle desktop previews the shape it would tile into. It never
-            // becomes one desktop-sized cell per window: that changed the
-            // desktop's block and reshuffled the whole pack.
+            // Monocle is switched off on the real desktops while the overview
+            // is open, so a desktop always shows its own tiled geometry here.
+            // A desktop that was still monocle a moment ago (the state poll has
+            // not caught up yet) is previewed with the shape it is about to
+            // take, so it does not flash one full-size window first.
             const mono = state.mono === true && shown.length > 0;
             let previewRects = null;
             if (mono) {
@@ -1108,14 +1157,16 @@ FocusScope {
             window.minimized = false;
         }
         KWinComponents.Workspace.activeWindow = window;
-        if (root.cfg.TransposeDesktopClick && at !== undefined && at !== null) {
+        if (transposeDesktopClickEnabled() && at !== undefined && at !== null) {
             root.warpPointer(at, 150);
         }
         effect.deactivate();
     }
 
-    // A monocle desktop previews the layout it would tile into: switching to
-    // that layout and focusing the window are one request to folonium.
+    // A preview cell is not a real window position, so clicking one never moves
+    // the cursor: the transpose settings describe real tiles only. Monocle
+    // desktops are switched back to tiled while the overview is open, so this
+    // path is a fallback for a state that arrived a moment too late.
     function activateTiled(window, desktop, at) {
         root.desktopPicked = true;
         if (desktop !== undefined) {
@@ -1123,9 +1174,6 @@ FocusScope {
         }
         requestCall.arguments = [JSON.stringify({ t: "tiled", id: String(window.internalId) })];
         requestCall.call();
-        if (root.cfg.TransposeDesktopClick && at !== undefined && at !== null) {
-            root.warpPointer(at, 150);
-        }
         effect.deactivate();
     }
 
@@ -1526,7 +1574,9 @@ FocusScope {
         y: mini ? tile.height - chip - 6 : (inPreview ? Math.round(previewRect.y * tile.height) + 2 : initY)
         width: mini ? chip : (inPreview ? Math.max(1, Math.round(previewRect.w * tile.width) - 4) : Math.max(1, initW))
         height: mini ? chip : (inPreview ? Math.max(1, Math.round(previewRect.h * tile.height) - 4) : Math.max(1, initH))
-        readonly property bool shown: !window.skipPager && (window.pid > 0 || window.resourceClass !== "") && (mini ? true : width > 0 && height > 0)
+        // A thumbnail shorter than the title band would be all title, so it is
+        // not drawn at all. Minimized chips are a separate strip and stay.
+        readonly property bool shown: !window.skipPager && (window.pid > 0 || window.resourceClass !== "") && (mini ? true : width > 0 && height >= root.minTileHeight)
         readonly property bool compact: Math.min(width, height) < 56
         readonly property bool dragging: root.dragTile === win && root.dragActive
         readonly property bool hovered: dragArea.containsMouse
@@ -1582,37 +1632,37 @@ FocusScope {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            height: Math.min(36, win.height)
-            visible: win.height > 28
+            height: Math.min(root.tileTitleBand, win.height)
+            visible: win.height >= root.tileTitleBand
             color: root.alpha(root.panelColor, 0.9)
             radius: win.radius
 
             Row {
                 anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                spacing: 8
+                anchors.leftMargin: root.tileTitlePad
+                anchors.rightMargin: root.tileTitlePad
+                spacing: root.tileTitlePad
 
                 Kirigami.Icon {
-                    width: 20
-                    height: 20
+                    width: root.tileTitleIcon
+                    height: root.tileTitleIcon
                     anchors.verticalCenter: parent.verticalCenter
                     source: win.window.icon
                 }
                 // Windows excluded from screen capture say so next to the icon.
                 Kirigami.Icon {
-                    width: 20
-                    height: 20
+                    width: root.tileTitleIcon
+                    height: root.tileTitleIcon
                     anchors.verticalCenter: parent.verticalCenter
                     source: "view-hidden"
                     visible: win.window.excludeFromCapture
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.max(1, parent.width - 28 - (win.window.excludeFromCapture ? 28 : 0))
+                    width: Math.max(1, parent.width - root.tileTitleIcon - root.tileTitlePad - (win.window.excludeFromCapture ? root.tileTitleIcon + root.tileTitlePad : 0))
                     text: win.window.caption
                     color: root.panelText
-                    font.pixelSize: 14
+                    font.pixelSize: root.tileTitleFont
                     font.weight: Font.DemiBold
                     elide: Text.ElideRight
                 }
@@ -1848,7 +1898,7 @@ FocusScope {
                 // is the whole screen scaled down, so the click's fraction is
                 // the same point on the real desktop.
                 const g = desktopTile.group;
-                if (root.cfg.TransposeDesktopClick && g && g.s > 0 && g.w > 0) {
+                if (transposeDesktopClickEnabled() && g && g.s > 0 && g.w > 0) {
                     root.warpPointer(Qt.point(root.screenX + mouse.x / g.s,
                                               root.screenY + mouse.y / g.s), 150);
                 }
@@ -2067,7 +2117,7 @@ FocusScope {
                             root.desktopPicked = true;
                             // An empty chip is the screen shape too, so a click
                             // lands at the same relative point on that desktop.
-                            if (root.cfg.TransposeDesktopClick && chip.width > 0 && chip.height > 0) {
+                            if (transposeDesktopClickEnabled() && chip.width > 0 && chip.height > 0) {
                                 root.warpPointer(Qt.point(
                                     root.screenX + mouse.x / chip.width * root.screenW,
                                     root.screenY + mouse.y / chip.height * root.screenH), 150);

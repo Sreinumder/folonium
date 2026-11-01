@@ -1230,7 +1230,7 @@ var CustomEngine = class {
       this.settings.rotateLayout = false;
       this.settings.mirrorLayout = false;
     }
-    if (this.settings.monocle) {
+    if (this.monocleActive()) {
       // One tile holds every window, so KWin stacks them full size and the
       // layout machinery stays out of the way.
       this.currentAst = null;
@@ -1358,8 +1358,14 @@ var CustomEngine = class {
   windowActivated(window) {
     return false;
   }
+  // Monocle is a stacking view of several windows. A desktop with no window,
+  // or with just one, has nothing to stack, so it stays on the tiled layout and
+  // the monocle toggle is a no-op there.
+  monocleActive() {
+    return this.settings !== void 0 && this.settings.monocle === true && this.windows.length > 1;
+  }
   tiledCapacity() {
-    if (this.settings !== void 0 && this.settings.monocle === true) {
+    if (this.monocleActive()) {
       return CUSTOM_MAX_WINDOWS;
     }
     const set = this.selectedCustomLayoutSet();
@@ -1405,7 +1411,7 @@ var CustomEngine = class {
   }
   // The shape on screen, written in the DSL.
   shapeText() {
-    return this.settings.monocle ? "" : this.tiledShapeText();
+    return this.monocleActive() ? "" : this.tiledShapeText();
   }
   // The shape monocle would apply if it were switched off, so the overview can
   // preview what a desktop is about to become.
@@ -2743,6 +2749,17 @@ var DBusHandler = class {
     this.dbusQml = dbusQml;
     dbusQml.getSettings().finished.connect(this.getSettingsCallback.bind(this));
     dbusQml.takeRequest().finished.connect(this.takeRequestCallback.bind(this));
+    dbusQml.getOverviewOpen().finished.connect(this.getOverviewOpenCallback.bind(this));
+  }
+  // The overview turns monocle off on real desktops while it is open so they
+  // show their tiled layout, then back on when it closes. The flag survives in
+  // the saver, so a click overwriting the request slot cannot strand monocle
+  // off: the next poll still reports the true state.
+  pollOverviewOpen() {
+    this.dbusQml.getOverviewOpen().call();
+  }
+  getOverviewOpenCallback([open]) {
+    controller().setOverviewOpen(open === true);
   }
   // Ask the saver for the command the overview left behind, if any.
   takeRequest() {
@@ -3240,7 +3257,7 @@ var Driver = class {
     }
   }
   isMonocle() {
-    return this.tilingEngine.engineType === CUSTOM_ENGINE_TYPE && this.getEngineSettings().monocle === true;
+    return this.tilingEngine.engineType === CUSTOM_ENGINE_TYPE && this.tilingEngine.engine?.monocleActive?.() === true;
   }
   // KWin windows in engine order, which is the order the layout uses.
   windowOrder() {
@@ -3675,6 +3692,13 @@ var Controller = class {
     this.postEventQueue = new Queue();
     this.processingEvents = false;
     this.drivers = /* @__PURE__ */ new Map();
+    // Displays whose monocle the overview turned off while it is open, so the
+    // real tiled layout is what the overview shows. Restored on close.
+    this.monocleSuspended = /* @__PURE__ */ new Map();
+    // The overview shares one long-lived effect, so its open/closed state is
+    // remembered here and every request is idempotent: only the final state
+    // matters, which keeps a dropped intermediate request harmless.
+    this.overviewOpen = false;
     this.windowHandlers = /* @__PURE__ */ new Map();
     this.previousDisplays = /* @__PURE__ */ new Map();
     this.dbusHandler = null;
@@ -3792,6 +3816,7 @@ var Controller = class {
   // script, so it round-trips its window commands through the saver.
   pollRequest() {
     this.dbusHandler?.takeRequest();
+    this.dbusHandler?.pollOverviewOpen();
   }
   handleRequest(request) {
     if (request.t === "swap") {
@@ -3826,9 +3851,9 @@ var Controller = class {
       this.qmlObjects.dbus?.moveMouseToFocus().call();
       return;
     }
-    // A monocle desktop is previewed with the tiled shape it would use, so the
-    // user can see where windows would go. Picking one only focuses it: the
-    // desktop stays in monocle, which then stacks it full size again.
+    // A monocle desktop is switched back to tiled while the overview is open,
+    // so clicking a window simply focuses it. The flag comes from the saver
+    // rather than this one-slot queue, which a later click can overwrite.
     if (request.t === "tiled") {
       const target = this.workspace.stackingOrder.find(
         (w) => String(w.internalId) === request.id
@@ -3836,7 +3861,55 @@ var Controller = class {
       if (target === undefined) return;
       if (target.minimized) target.minimized = false;
       this.workspace.activeWindow = target;
-      this.qmlObjects.dbus?.moveMouseToFocus().call();
+      // No moveMouseToFocus here: a preview cell is a placeholder, not where the
+      // window really sits, so focusing it must not pull the pointer anywhere.
+    }
+  }
+  // The overview shows real tiled desktops, so monocle desktops are switched
+  // back to tiled while it is open and put back afterwards. Every display that
+  // had monocle on is remembered, because the overview covers all desktops.
+  //
+  // This is a view-only change: nothing is written to the saver store, so a
+  // crash while the overview is open still comes back with the user's monocle
+  // preference intact. The engines are rebuilt directly for the same reason.
+  setOverviewOpen(open) {
+    if (this.overviewOpen === open) {
+      return;
+    }
+    this.overviewOpen = open;
+    const touched = [];
+    if (open) {
+      for (const driver of this.drivers.values()) {
+        const display = driver.display;
+        if (display === null || display === void 0 || display.output == null) continue;
+        if (driver.getEngineType() !== CUSTOM_ENGINE_TYPE) continue;
+        const settings = driver.getEngineSettings();
+        if (settings.monocle !== true) continue;
+        this.monocleSuspended.set(display.toSymbol(), display);
+        driver.changeTilingEngine(void 0, { monocle: false });
+        touched.push(driver);
+      }
+    } else {
+      for (const [key, display] of this.monocleSuspended) {
+        const driver = this.drivers.get(key);
+        if (driver !== void 0) {
+          driver.changeTilingEngine(void 0, { monocle: true });
+          touched.push(driver);
+        }
+        // A display that disappeared while the overview was open must not be
+        // restored on top of whatever now occupies its key.
+        this.monocleSuspended.delete(key);
+      }
+    }
+    for (const driver of touched) {
+      const display = driver.display;
+      if (display === null || display === void 0 || display.output == null) continue;
+      // Mark the suspended settings as "already saved" so the rebuild below
+      // does not write them to the store: monocle is being hidden from the
+      // overview, not turned off by the user.
+      driver.lastSavedEngineType = driver.getEngineType();
+      driver.lastSavedSettings = JSON.stringify(driver.getEngineSettings());
+      this.queueEvent({ t: "updateTiles", display, rebuild: true });
     }
   }
   queueEvent(ev, forcePush = false) {
@@ -4377,6 +4450,11 @@ var Controller = class {
         driver.getEngineType(),
         "- ignoring"
       );
+      return [];
+    }
+    // A desktop with no window, or with one, has nothing to stack: monocle
+    // would look exactly like the tiled layout, so the toggle does nothing.
+    if (setting === "monocle" && driver.windowCount() < 2) {
       return [];
     }
     const current = settings[setting];

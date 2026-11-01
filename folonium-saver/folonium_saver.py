@@ -65,6 +65,10 @@ DBUS_IFACE = "org.freedesktop.DBus"
 DBUS_PATH = "/org/freedesktop/DBus"
 FLUSH_DELAY = 0.4
 POLL_TIMEOUT = 0.25
+# How long an "overview is open" flag stays trusted. The effect refreshes it on
+# open and on close; past this age the flag is treated as closed so a crash
+# cannot leave monocle switched off.
+OVERVIEW_STALE = 5.0
 
 CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
 STORE_PATH = os.path.join(CONFIG_HOME, "folonium", "settings.json")
@@ -475,6 +479,14 @@ class Saver:
         self.state = {}
         # One pending command from the overview effect to the script.
         self.request = ""
+        # Whether the overview effect is open. Kept apart from the one-slot
+        # request queue: a click can overwrite that, but this flag has to
+        # survive so monocle can be put back when the overview closes.
+        self.overview_open = False
+        # When that flag was last refreshed. The effect sets it on open and on
+        # close, but a crash or a killed KWin would leave it stuck on and keep
+        # monocle off for good, so a stale flag is reported as closed.
+        self.overview_seen = 0.0
         # Cursor position for hover desktop switching.
         self.cursor_x = 0
         self.cursor_y = 0
@@ -505,6 +517,16 @@ class Saver:
             return ("", ())
         if member == "TakeRequest":
             return ("s", (self.take_request(),))
+        if member == "SetOverviewOpen":
+            self.overview_open = args[0] is True
+            self.overview_seen = time.time()
+            return ("", ())
+        if member == "GetOverviewOpen":
+            # Report a stale "open" as closed, so a crashed effect cannot leave
+            # monocle switched off forever. The effect refreshes this every
+            # second while it is actually open.
+            fresh = (time.time() - self.overview_seen) < OVERVIEW_STALE
+            return ("b", (self.overview_open and fresh,))
         if member == "GetMedia":
             if self.media is None:
                 return ("s", ("",))
@@ -747,6 +769,12 @@ INTROSPECTION_XML = (
     "    </method>\n"
     '    <method name="TakeRequest">\n'
     '      <arg name="request_json" type="s" direction="out"/>\n'
+    "    </method>\n"
+    '    <method name="SetOverviewOpen">\n'
+    '      <arg name="open" type="b" direction="in"/>\n'
+    "    </method>\n"
+    '    <method name="GetOverviewOpen">\n'
+    '      <arg name="open" type="b" direction="out"/>\n'
     "    </method>\n"
     '    <method name="GetMedia">\n'
     '      <arg name="players_json" type="s" direction="out"/>\n'
