@@ -29,7 +29,7 @@
         <entry name="CustomRotateLayout" type="bool"><default>false</default></entry>
         <entry name="CustomMonocle" type="bool"><default>false</default></entry>
         <entry name="CustomRatios" type="string"><default>2:1 3:2 1:1 2:3 1:2&#10;1:1:1 2:1:1 1:2:1 1:1:2</default></entry>
-        <entry name="CustomLayout1" type="string"><default>[1]&#10;[1 1] /1 1/&#10;[1 2] [1 1 1]&#10;[2 2] [1 2 1] [1 1 2] [1 3]</default></entry>
+        <entry name="CustomLayout1" type="string"><default>[1]&#10;[1 1]&#10;[1 2] [1 1 1]&#10;[2 2] [1 2 1] [1 1 2] [1 3]</default></entry>
         <entry name="CustomLayout2" type="string"><default></default></entry>
         <entry name="CustomLayout3" type="string"><default></default></entry>
         <entry name="CustomLayout4" type="string"><default></default></entry>
