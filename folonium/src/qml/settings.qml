@@ -272,11 +272,21 @@ PlasmaCore.Dialog {
             Layout.alignment: Qt.AlignLeft;
             onClicked: root.toggleKwinEngine();
         }
-        PC3.Button {
-            text: root.monocleActive ? "Back to Tiling" : "Toggle Monocle";
+
+        RowLayout {
+            visible: root.custom && root.windowCount >= 2;
             Layout.alignment: Qt.AlignLeft;
-            onClicked: root.toggleMonocle();
+            Layout.columnSpan: 2;
+            spacing: 4;
+            PC3.Label {
+                text: "Monocle layout:";
+            }
+            PC3.Button {
+                text: root.monocleActive ? "Back to Tiling" : "Toggle Monocle";
+                onClicked: root.toggleMonocle();
+            }
         }
+        
 
         PC3.Label {
             visible: root.hasProp("rotateLayout");
