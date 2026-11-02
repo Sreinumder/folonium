@@ -2366,7 +2366,7 @@ var ShortcutsHandler = class {
     // evModifyEngineSetting checks it again on the display that actually gets
     // the change.
     this.shortcuts.toggleMonocle().activated.connect(
-      this.modifyEngineSetting.bind(this, "monocle", "toggle", void 0, void 0, void 0, 2)
+      this.toggleMonocle.bind(this)
     );
   }
   // Returns the driver for the display in view, but only if it holds at least
@@ -2410,6 +2410,9 @@ var ShortcutsHandler = class {
     // One implementation, so the shortcut and the popup save the engine switch
     // to the per-display store the same way.
     controller().toggleKwinEngine();
+  }
+  toggleMonocle() {
+    this.modifyEngineSetting("monocle", "toggle", void 0, void 0, void 0, 2);
   }
   // Steps the Custom engine through the shapes available for however many
   // windows are open right now.
@@ -2665,6 +2668,7 @@ var SettingsHandler = class {
     this.settingsQml.cycleVerticalRatio.connect(this.cycleVerticalRatio.bind(this));
     this.settingsQml.rotateWindows.connect(this.rotateWindows.bind(this));
     this.settingsQml.toggleKwinEngine.connect(this.toggleKwinEngine.bind(this));
+    this.settingsQml.toggleMonocle.connect(this.toggleMonocle.bind(this));
     this.settingsQml.selectCustomLayoutTab.connect(this.selectCustomLayoutTab.bind(this));
   }
   // Live state the dialog shows but must never edit itself.
@@ -2683,7 +2687,8 @@ var SettingsHandler = class {
       layoutIndex,
       customSelected === true,
       customLayoutSets ?? [],
-      ratioInfo ?? { horizontal: "", vertical: "", horizontalCount: 0, verticalCount: 0 }
+      ratioInfo ?? { horizontal: "", vertical: "", horizontalCount: 0, verticalCount: 0 },
+      engineType === CUSTOM_ENGINE_TYPE && engineSettings?.monocle === true && windowCount > 1
     );
   }
   hide() {
@@ -2721,6 +2726,9 @@ var SettingsHandler = class {
   }
   toggleKwinEngine() {
     controller().toggleKwinEngine();
+  }
+  toggleMonocle() {
+    controller().toggleMonocle();
   }
   selectCustomLayoutTab(desktop, activity, output, tabIndex) {
     controller().selectCustomLayoutTab(
@@ -3774,6 +3782,9 @@ var Controller = class {
   }
   cycleVerticalRatio(backwards) {
     this.shortcutsHandler.cycleVerticalRatio(backwards === true);
+  }
+  toggleMonocle() {
+    this.shortcutsHandler.toggleMonocle();
   }
   refreshSettings() {
     if (!this.settingsHandler.isVisible()) {

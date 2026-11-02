@@ -27,6 +27,7 @@ PlasmaCore.Dialog {
     property int horizontalRatioCount: 0;
     property int verticalRatioCount: 0;
     property bool kwinActive: false;
+    property bool monocleActive: false;
     x: (screenGeometry.x + screenGeometry.width / 2) - width / 2;
     y: (screenGeometry.y + screenGeometry.height / 2) - height / 2;
 
@@ -38,7 +39,7 @@ PlasmaCore.Dialog {
     // Only the Custom engine reports a window list it can count and reshape.
     readonly property bool custom: engineType === 6 && windowCount >= 0;
 
-    function show(desktop, activity, output, engineType, engineSettings, windowCount, variantCount, shapeText, variantIndex, customSelected, customLayoutSets, ratioInfo) {
+    function show(desktop, activity, output, engineType, engineSettings, windowCount, variantCount, shapeText, variantIndex, customSelected, customLayoutSets, ratioInfo, monocleActive) {
         this.desktop = desktop;
         this.activity = activity;
         this.output = output;
@@ -57,6 +58,7 @@ PlasmaCore.Dialog {
         this.horizontalRatioCount = ratios.horizontalCount !== undefined ? ratios.horizontalCount : 0;
         this.verticalRatioCount = ratios.verticalCount !== undefined ? ratios.verticalCount : 0;
         this.kwinActive = engineType === 5;
+        this.monocleActive = monocleActive;
 
         // Update current screen information
         this.screenGeometry = Workspace.clientArea(KWin.MaximizeArea, output, desktop);
@@ -124,6 +126,7 @@ PlasmaCore.Dialog {
     signal cycleVerticalRatio(backwards: bool);
     signal rotateWindows(backwards: bool);
     signal toggleKwinEngine();
+    signal toggleMonocle();
     signal selectCustomLayoutTab(desktop: var, activity: var, output: var, tabIndex: int);
 
     mainItem: GridLayout {
@@ -268,6 +271,11 @@ PlasmaCore.Dialog {
             text: root.kwinActive ? "Back to Tiling" : "Switch to KWin";
             Layout.alignment: Qt.AlignLeft;
             onClicked: root.toggleKwinEngine();
+        }
+        PC3.Button {
+            text: root.monocleActive ? "Back to Tiling" : "Toggle Monocle";
+            Layout.alignment: Qt.AlignLeft;
+            onClicked: root.toggleMonocle();
         }
 
         PC3.Label {
