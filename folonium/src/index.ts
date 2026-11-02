@@ -2361,8 +2361,12 @@ var ShortcutsHandler = class {
     this.shortcuts.toggleKwinEngine().activated.connect(
       this.toggleKwinEngine.bind(this)
     );
+    // Monocle needs two windows to stack, so the shortcut is a no-op on a
+    // desktop holding one or none. `minWindows` checks the count up front, and
+    // evModifyEngineSetting checks it again on the display that actually gets
+    // the change.
     this.shortcuts.toggleMonocle().activated.connect(
-      this.modifyEngineSetting.bind(this, "monocle", "toggle")
+      this.modifyEngineSetting.bind(this, "monocle", "toggle", void 0, void 0, void 0, 2)
     );
   }
   // Returns the driver for the display in view, but only if it holds at least
@@ -3695,6 +3699,10 @@ var Controller = class {
     // Displays whose monocle the overview turned off while it is open, so the
     // real tiled layout is what the overview shows. Restored on close.
     this.monocleSuspended = /* @__PURE__ */ new Map();
+    // False until the open windows have been adopted at startup. An empty
+    // window list before that means "not known yet", not "the user closed
+    // everything", so monocle must not be cleared on it.
+    this.started = false;
     // The overview shares one long-lived effect, so its open/closed state is
     // remembered here and every request is idempotent: only the final state
     // matters, which keeps a dropped intermediate request harmless.
@@ -3917,6 +3925,25 @@ var Controller = class {
     this.eventQueue.push(ev);
     if (this.eventTimer && typeof this.eventTimer.start === "function") this.eventTimer.start();
   }
+  // Monocle is a stack of several windows, so it only makes sense while the
+  // desktop holds at least two. Once the count drops to one or zero the stored
+  // flag is cleared for real, not just ignored: otherwise it would silently
+  // come back the moment a second window appeared.
+  //
+  // Nothing is cleared before the startup adoption has run, because until then
+  // an empty window list means "not known yet" rather than "the user closed
+  // everything", and acting on it would discard the restored preference.
+  enforceMonocle(display, driver) {
+    if (!this.started) return false;
+    if (driver.windowCount() >= 2) return false;
+    // Nothing to clear below two windows, or on a display that is not Custom,
+    // or while the overview is hiding monocle on purpose.
+    if (driver.getEngineType() !== CUSTOM_ENGINE_TYPE) return false;
+    if (driver.getEngineSettings().monocle !== true) return false;
+    if (this.overviewOpen) return false;
+    driver.changeTilingEngine(void 0, { monocle: false });
+    return true;
+  }
   queuePostEvent(ev, forcePush = false) {
     if (this.processingEvents && !forcePush) return;
     this.postEventQueue.push(ev);
@@ -3969,6 +3996,22 @@ var Controller = class {
           display.desktop
         );
         if (rootTile != void 0) {
+          // Clear monocle before the layout is built, so the rebuild already
+          // lays the desktop out as tiled instead of building a stack and
+          // then throwing it away.
+          if (this.enforceMonocle(display, driver)) {
+            const engine = driver.getEngineType();
+            const settings = driver.getEngineSettings();
+            this.dbusHandler?.setSettings(
+              display,
+              engine,
+              settings,
+              driver.lastEngine,
+              driver.lastEngineSettings
+            );
+            driver.lastSavedEngineType = engine;
+            driver.lastSavedSettings = JSON.stringify(settings);
+          }
           driver.buildLayout(rootTile, display);
           this.dbusHandler?.setState(display, driver.stateJson());
           rebuilt = true;
@@ -4768,6 +4811,10 @@ function main(api, qmlObjects) {
     }
     controller().workspaceHandler.windowAdded(window, true);
   }
+  // Everything that was already open has now been adopted, so an empty window
+  // list from here on means the desktop really holds no windows. Monocle may
+  // only be cleared after this point.
+  controller().started = true;
 }
 export {
   main
