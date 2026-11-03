@@ -28,14 +28,13 @@ PlasmaCore.Dialog {
     property int verticalRatioCount: 0;
     property bool kwinActive: false;
     property bool monocleActive: false;
-    property bool pinned: false;
     x: (screenGeometry.x + screenGeometry.width / 2) - width / 2;
     y: (screenGeometry.y + screenGeometry.height / 2) - height / 2;
 
     type: PlasmaCore.Dialog.OnScreenDisplay;
-    flags: Qt.Dialog | Qt.WindowStaysOnTopHint;
+    flags: Qt.Popup | Qt.WindowStaysOnTopHint;
     location: PlasmaCore.Types.Floating;
-    hideOnWindowDeactivate: !root.pinned;
+    hideOnWindowDeactivate: true;
 
     // Only the Custom engine reports a window list it can count and reshape.
     readonly property bool custom: engineType === 6 && windowCount >= 0;
@@ -66,7 +65,6 @@ PlasmaCore.Dialog {
 
         // Show the popup
         this.visible = true;
-        showGuard.restart();
     }
 
     function hide() {
@@ -139,42 +137,6 @@ PlasmaCore.Dialog {
         Layout.margins: 20;
         // change biggestLabel to be the id of whatever label is biggest
         Layout.preferredWidth: biggestLabel.implicitWidth * 2;
-
-        Connections {
-            target: Workspace;
-
-            // WindowStaysOnTopHint makes PlasmaQuick treat this as a
-            // Dock/panel, which never gets the focus-out event that
-            // hideOnWindowDeactivate relies on. Close it ourselves when the
-            // user switches to another window, unless it is pinned.
-            function onWindowActivated(window) {
-                if (root.pinned || showGuard.running) {
-                    return;
-                }
-                // Ignore KWin's own non-normal windows, including this dialog.
-                if (window !== null && !window.normalWindow) {
-                    return;
-                }
-                root.hide();
-            }
-        }
-
-        // Showing the dialog can briefly change the active window; don't let
-        // that immediately close the dialog we just opened.
-        Timer {
-            id: showGuard;
-            interval: 400;
-            repeat: false;
-        }
-
-        PC3.Label {
-            text: "Keep Open:";
-        }
-        PC3.Button {
-            text: root.pinned ? "Unpin" : "Pin";
-            Layout.alignment: Qt.AlignLeft;
-            onClicked: root.pinned = !root.pinned;
-        }
 
         PC3.Label {
             visible: root.custom;
@@ -376,3 +338,4 @@ PlasmaCore.Dialog {
         }
     }
 }
+
