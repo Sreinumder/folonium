@@ -4300,7 +4300,12 @@ var Controller = class {
         }
         continue;
       }
-      if (tiled) {
+      // A window that moves back from a desktop without a driver has no
+      // tiled driver to copy the state from. Fall back to the handler's
+      // intent so a tiled window does not come back floating.
+      const handler = this.windowHandlers.get(window);
+      const wantsTiled = handler !== void 0 && handler.wantsTiled;
+      if (tiled || (wantsTiled && driver.getEngineType() !== KWIN_ENGINE_TYPE)) {
         driver.addWindow(window);
       } else {
         driver.addWindowUntiled(window);
