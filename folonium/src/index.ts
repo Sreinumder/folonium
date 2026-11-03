@@ -597,24 +597,25 @@ function parseLayoutList(text) {
   return out;
 }
 
-// A vertical stack of leaves nested in a column is written as its count, which
-// is the compact spelling the layout list uses (`[1 2]`). At the root a group
-// is always written out, so a rotated root cannot collapse to a bare number.
-function layoutSerialize(node, isRoot = true) {
+// A group of leaves perpendicular to its parent is written as its count, which
+// is the compact spelling the layout list uses: `/1 2/` instead of
+// `/1 [1 1]/`. The root is always written out as a bracketed group so a
+// rotated root cannot collapse to a bare number.
+function layoutSerialize(node, parentDir) {
   if (node.kind === "leaf") {
     // A single window has no split, but the DSL always shows the root as a
     // bracketed group so the popup never shows a bare count.
-    return isRoot ? "[1]" : "1";
+    return parentDir === void 0 ? "[1]" : "1";
   }
-  if (!isRoot && node.dir === 2 /* Vertical */ && node.children.every((child) => child.kind === "leaf")) {
+  if (parentDir !== void 0 && node.dir === layoutOpposite(parentDir) && node.children.every((child) => child.kind === "leaf")) {
     return String(node.children.length);
   }
   const open = node.dir === 1 /* Horizontal */ ? "[" : "/";
   const close = node.dir === 1 /* Horizontal */ ? "]" : "/";
-  return open + node.children.map((child) => layoutSerialize(child, false)).join(" ") + close;
+  return open + node.children.map((child) => layoutSerialize(child, node.dir)).join(" ") + close;
 }
 function layoutText(node) {
-  return node.kind === "leaf" ? "[1]" : layoutSerialize(node, true);
+  return node.kind === "leaf" ? "[1]" : layoutSerialize(node, void 0);
 }
 
 // The eight symmetries of the rectangle. Transpose swaps the split axes;
@@ -642,9 +643,6 @@ function layoutMirror(node) {
     }
   }
   return layoutSplit(node.dir, children, sizes);
-}
-function layoutRotate90(node) {
-  return layoutMirror(layoutTranspose(node));
 }
 // Tags let a window order follow the leaves through a view transform. Mirroring
 // must keep a vertical stack's top/bottom order while exchanging its place with
@@ -690,41 +688,6 @@ function windowOrderForView(windows, ast, oldRotate, oldMirror, newRotate, newMi
   }
   return out;
 }
-function layoutTransforms(node) {
-  const out = [];
-  let current = node;
-  for (let i = 0; i < 4; i += 1) {
-    out.push(current);
-    out.push(layoutMirror(current));
-    current = layoutRotate90(current);
-  }
-  return out;
-}
-
-// Digits sort before groups and `[` sorts before `/`, so horizontal groups are
-// preferred at the root and a leading `1` is preferred inside a vertical group.
-function layoutCharRank(ch) {
-  if (ch >= "0" && ch <= "9") return 0;
-  if (ch === "[") return 1;
-  if (ch === "/") return 2;
-  if (ch === "]") return 3;
-  if (ch === " ") return 4;
-  return 5;
-}
-function layoutCompareText(a, b) {
-  const length = Math.min(a.length, b.length);
-  for (let i = 0; i < length; i += 1) {
-    const ra = layoutCharRank(a[i]);
-    const rb = layoutCharRank(b[i]);
-    if (ra !== rb) {
-      return ra - rb;
-    }
-    if (a[i] !== b[i]) {
-      return a[i] < b[i] ? -1 : 1;
-    }
-  }
-  return a.length - b.length;
-}
 // Ratio options are whitespace-separated `a:b[:c...]` patterns. Patterns of
 // different arity never mix: a split only matches an option with the same
 // number of children.
@@ -758,17 +721,6 @@ function parseRatioList(text) {
   }
   return out;
 }
-function layoutCanonicalize(node) {
-  let best = null;
-  for (const candidate of layoutTransforms(node)) {
-    const text = layoutSerialize(candidate, true);
-    if (best === null || layoutCompareText(text, best.text) < 0) {
-      best = { text, ast: candidate };
-    }
-  }
-  return best;
-}
-
 function layoutCloneWithDefaultSizes(node) {
   if (node.kind === "leaf") {
     return layoutLeaf();
@@ -983,6 +935,19 @@ var CustomEngine = class {
         if (layout.text === text) {
           return layout;
         }
+      }
+      // Older versions stored expanded spellings such as `/1 [1 1]/` before
+      // the list switched to compact forms. Compare normalized text so an
+      // existing selection still matches its layout instead of resetting.
+      try {
+        const normalized = layoutText(parseLayout(text));
+        for (const layout of layouts) {
+          if (layout.text === normalized) {
+            return layout;
+          }
+        }
+      } catch (e) {
+        // Ignore an unparseable saved selection and fall back to the first.
       }
     }
     return layouts[0];

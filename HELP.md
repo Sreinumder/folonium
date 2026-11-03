@@ -104,7 +104,9 @@ layout is written in a small slicing grammar:
 - A bare number is that many windows stacked along the other axis.
 
 So `[1 2]` is one window beside a column of two, and `/1 2/` is the same shape
-rotated. The window count of a layout is the sum of its numbers.
+rotated. The window count of a layout is the sum of its numbers. Layouts are
+shown in this compact spelling, so a rotated `[1 2]` appears as `/1 2/` rather
+than `/1 [1 1]/`.
 
 Each KCM tab is a **layout set**. Write one or more layouts in a tab, separated
 by spaces or newlines, so a single tab can cover several window counts. L1 is
