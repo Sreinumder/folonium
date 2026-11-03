@@ -462,10 +462,11 @@ var BaseEngineSettings = class {
 // `[1 2]` is one column beside a column of two stacked windows, and `/1 2/` is
 // one row above a row of two side-by-side windows.
 //
-// Layouts are compared up to the eight symmetries of a rectangle (D4), so a
-// rotation or reflection is the same topology. The canonical spelling is the
-// smallest of the eight spellings under the ordering below. That is what the
-// popup shows, and equivalent layouts are de-duplicated by it.
+// Identical spellings are de-duplicated by their normalized text, but a
+// rotation or reflection is kept: `[1 2]` and `[2 1]` describe the same
+// topology while filling the leaves in a different order, so both are useful
+// as separate variants. Dropping one as an "equivalent" layout made the second
+// variant silently rotate like the first.
 var CUSTOM_MAX_WINDOWS = 9;
 var CUSTOM_ENGINE_TYPE = 6;
 var KWIN_ENGINE_TYPE = 5;
@@ -660,25 +661,29 @@ function layoutTagLeaves(node, state) {
     node.sizes === void 0 ? void 0 : node.sizes.slice()
   );
 }
-function layoutViewTagOrder(node, rotate, mirror) {
+function layoutViewTagOrder(node, mirror) {
   if (node.kind === "leaf") {
     return [node.tag];
   }
-  const dir = rotate ? layoutOpposite(node.dir) : node.dir;
-  const children = mirror && dir === 1 /* Horizontal */
+  // The view is composed as mirror then rotate, so a node's children reverse
+  // when it is a horizontal split in the layout's own orientation. After a
+  // rotation that flip shows up as a vertical mirror on screen, which is what
+  // keeps the four states distinct. Rotation only swaps split axes, so it does
+  // not change the depth-first leaf order.
+  const children = mirror && node.dir === 1 /* Horizontal */
     ? node.children.slice().reverse()
     : node.children;
   const out = [];
   for (const child of children) {
-    out.push(...layoutViewTagOrder(child, rotate, mirror));
+    out.push(...layoutViewTagOrder(child, mirror));
   }
   return out;
 }
 function windowOrderForView(windows, ast, oldRotate, oldMirror, newRotate, newMirror) {
   const state = { next: 0 };
   const tagged = layoutTagLeaves(ast, state);
-  const before = layoutViewTagOrder(tagged, oldRotate, oldMirror);
-  const after = layoutViewTagOrder(tagged, newRotate, newMirror);
+  const before = layoutViewTagOrder(tagged, oldMirror);
+  const after = layoutViewTagOrder(tagged, newMirror);
   const out = after.map((tag) => windows[before.indexOf(tag)]);
   for (let i = before.length; i < windows.length; i += 1) {
     out.push(windows[i]);
@@ -803,12 +808,15 @@ function customLayoutSets() {
           if (count < 1 || count > CUSTOM_MAX_WINDOWS) {
             continue;
           }
-          const canonical = layoutCanonicalize(ast).text;
-          if (seen.has(canonical)) {
+          // Normalized text compares spellings, not shapes. `[1 2]` and
+          // `[2 1]` stay distinct so the second can be selected and rotated on
+          // its own; `[1 [1 1]]` and `[1 1 1]` still collapse to one.
+          const layoutTextValue = layoutText(ast);
+          if (seen.has(layoutTextValue)) {
             continue;
           }
-          seen.add(canonical);
-          layouts.push({ text: layoutText(ast), ast, count, canonical });
+          seen.add(layoutTextValue);
+          layouts.push({ text: layoutTextValue, ast, count });
         }
         set = { layouts };
       } catch (e) {
@@ -896,18 +904,22 @@ var CustomEngine = class {
     const newEntry = this.selectedCustomLayout(this.currentCount);
     const newCustom = newEntry === null ? "" : newEntry.text;
     if (this.currentAst !== null && oldTab === this.settings.customLayoutTab && oldCustom === newCustom && this.currentCount === this.windows.length && (oldRotate !== this.settings.rotateLayout || oldMirror !== this.settings.mirrorLayout)) {
-      // Invert the old view, then apply the new one. The build applies rotate
-      // before mirror, so undoing mirror before rotating is what keeps the two
-      // flags independent when both change at once.
+      // Build order is mirror then rotate, so undo it in reverse: rotate first,
+      // then mirror, and reapply the new flags in build order. Keeping the
+      // operations in that order is what makes both flags independent when
+      // they change at once.
       let next = this.currentAst;
+      if (oldRotate) {
+        next = layoutTranspose(next);
+      }
       if (oldMirror) {
         next = layoutMirror(next);
       }
-      if (oldRotate !== this.settings.rotateLayout) {
-        next = layoutTranspose(next);
-      }
       if (this.settings.mirrorLayout) {
         next = layoutMirror(next);
+      }
+      if (this.settings.rotateLayout) {
+        next = layoutTranspose(next);
       }
       next = this.applyRatios(next);
       const custom = this.selectedCustomLayout(this.currentCount);
@@ -1024,11 +1036,16 @@ var CustomEngine = class {
       return { ast: cached, key };
     }
     let ast = layoutCloneWithDefaultSizes(entry.ast);
-    if (this.settings.rotateLayout) {
-      ast = layoutTranspose(ast);
-    }
+    // Mirror first, then rotate. Mirroring the layout in its own orientation
+    // and then rotating gives the four distinct states `[1 2]`, `/1 2/`,
+    // `[2 1]` and `/2 1/`. Mirroring after rotating instead flips the rotated
+    // layout along its new horizontal axis, which leaves `/1 2/` unchanged
+    // when the user expects `/2 1/`.
     if (this.settings.mirrorLayout) {
       ast = layoutMirror(ast);
+    }
+    if (this.settings.rotateLayout) {
+      ast = layoutTranspose(ast);
     }
     ast = this.applyRatios(ast);
     this.sizedLayouts.set(key, ast);

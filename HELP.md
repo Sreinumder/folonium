@@ -118,10 +118,17 @@ two-child splits and `1:1:1 2:1:1 1:2:1 1:1:2` for three-child splits.
 Horizontal and vertical splits keep separate selections; cycle them from the
 layout menu or their shortcuts.
 
-Rotations and reflections of the same layout are not duplicated. A layout tiles
-as many windows as it has slots; any extra windows float. Per-display settings
-such as mirror and rotate are in the layout menu, and the KWin row there
-switches that display to KWin's own tiling and back.
+Repeated spellings that normalize to the same layout are dropped, but rotations
+and reflections are kept as separate variants because they fill the slots in a
+different order. A layout tiles as many windows as it has slots; any extra
+windows float. Per-display settings such as mirror and rotate are in the layout
+menu, and the KWin row there switches that display to KWin's own tiling and
+back.
+
+Rotate and mirror are independent and give four states. For `[1 2]` they are
+`[1 2]` (base), `/1 2/` (rotated), `[2 1]` (mirrored), and `/2 1/` (rotated and
+mirrored). Mirroring always uses the layout's own horizontal axis before the
+rotation is applied, so with rotation on the mirror appears vertical on screen.
 
 Note that layouts and ratios are parsed by **separate** fields, not mixed
 together — see the next section.
