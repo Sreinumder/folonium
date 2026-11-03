@@ -106,4 +106,19 @@ Item {
         method: "invokeShortcut";
         arguments: ["MoveMouseToFocus"];
     }
+
+    // KWin only refreshes the values readConfig() returns after a reconfigure.
+    // The saver asks for one when the layout tabs change; without the saver the
+    // script asks when the settings popup opens.
+    function reconfigureKWin() {
+        return reconfigureKWinObj;
+    }
+    DBusCall {
+        id: reconfigureKWinObj;
+
+        service: "org.kde.KWin";
+        path: "/KWin";
+        dbusInterface: "org.kde.KWin";
+        method: "reconfigure";
+    }
 }

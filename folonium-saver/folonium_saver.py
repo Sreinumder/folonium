@@ -79,6 +79,10 @@ STORE_PATH = os.path.join(CONFIG_HOME, "folonium", "settings.json")
 # whitelist: the value arrives over D-Bus and ends up in a config file.
 KWIN_CONFIG = "kwinrc"
 KWIN_GROUP = "Script-folonium"
+KWIN_CONFIG_PATH = os.path.join(CONFIG_HOME, KWIN_CONFIG)
+# KConfig can write a group in several steps; wait for the file to settle
+# before reloading KWin's copy.
+KWIN_RECONFIGURE_SETTLE = 0.2
 GLOBAL_KEYS = {
     "AutoFitStubbornWindows": "bool",
 }
@@ -119,6 +123,78 @@ def pointer_pos():
         elif part.startswith("y:"):
             y = int(part[2:] or 0)
     return None if x is None or y is None else (x, y)
+
+
+class KWinConfigWatcher:
+    """Ask KWin to reconfigure when the layout tabs in kwinrc change.
+
+    KWin's script config KCM writes CustomLayout1..9 and CustomRatios directly
+    to kwinrc, but never calls org.kde.KWin.reconfigure. A running script keeps
+    the values it read at load time until that happens, so watch this script's
+    config group and request it for the KCM. Only this group is watched, so an
+    ordinary KWin settings change does not reload script config as a side
+    effect.
+    """
+
+    def __init__(self, path):
+        self.path = path
+        self.signature = self.file_signature()
+        self.group = self.layout_group()
+        self.changed_at = None
+
+    def file_signature(self):
+        try:
+            stat = os.stat(self.path)
+        except OSError:
+            return None
+        return (stat.st_mtime_ns, stat.st_size)
+
+    def layout_group(self):
+        """The raw [Script-folonium] section, or None if it is not there."""
+        try:
+            with open(self.path, encoding="utf-8", errors="replace") as handle:
+                text = handle.read()
+        except OSError:
+            return None
+        marker = f"[{KWIN_GROUP}]"
+        start = text.find(marker)
+        if start < 0:
+            return None
+        end = text.find("\n[", start + len(marker))
+        return text[start:end if end >= 0 else len(text)]
+
+    def tick(self, conn):
+        signature = self.file_signature()
+        now = time.monotonic()
+        if signature != self.signature:
+            self.signature = signature
+            self.changed_at = now
+            return
+        if self.changed_at is None or now - self.changed_at < KWIN_RECONFIGURE_SETTLE:
+            return
+        self.changed_at = None
+        group = self.layout_group()
+        if group == self.group:
+            return
+        self.group = group
+        self.reconfigure(conn)
+
+    def reconfigure(self, conn):
+        try:
+            conn.send(
+                new_method_call(
+                    DBusAddress(
+                        "/KWin",
+                        bus_name="org.kde.KWin",
+                        interface="org.kde.KWin",
+                    ),
+                    "reconfigure",
+                )
+            )
+        except Exception as exc:
+            log(f"could not ask KWin to reconfigure: {exc!r}")
+            return
+        log("layout tabs changed, asked KWin to reconfigure")
 
 
 class Store:
@@ -880,6 +956,7 @@ def main():
     log(f"RequestName -> {reply.body} (1 = acquired)")
 
     saver = Saver(Store(STORE_PATH), media_conn)
+    kwin_watcher = KWinConfigWatcher(KWIN_CONFIG_PATH)
     log(f"serving {IFACE} at {PATH}, store at {STORE_PATH}")
 
     try:
@@ -915,6 +992,7 @@ def main():
                 else:
                     conn.send(make_reply(msg, signature, body))
             saver.store.tick()
+            kwin_watcher.tick(conn)
     except (KeyboardInterrupt, BrokenPipeError):
         pass
     finally:

@@ -121,8 +121,17 @@ reload_kwin() {
     fi
     say "Reloading KWin script and effect"
     qdbus_cmd org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript folonium >/dev/null 2>&1 || true
+    # KWin's QML engine keeps components and imported modules cached by URL, so
+    # unloading and reloading the same path would keep running the old code.
+    # Load a fresh copy from a new path instead; the canonical package path is
+    # what KWin uses at the next login, when there is no cache to worry about.
+    local load_root=${XDG_RUNTIME_DIR:-/tmp}
+    rm -rf -- "$load_root"/folonium-load.* 2>/dev/null || true
+    local load_dir
+    load_dir=$(mktemp -d "$load_root/folonium-load.XXXXXX")
+    cp -a -- "$SCRIPT_DIR/contents" "$load_dir/contents"
     qdbus_cmd org.kde.KWin /Scripting org.kde.kwin.Scripting.loadDeclarativeScript \
-        "$SCRIPT_DIR/contents/ui/main.qml" folonium >/dev/null 2>&1 || true
+        "$load_dir/contents/ui/main.qml" folonium >/dev/null 2>&1 || true
     # A declarative script only runs after start(); without it the script is
     # loaded but never initializes (no states, no tiling).
     qdbus_cmd org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null 2>&1 || true
@@ -226,6 +235,7 @@ uninstall_all() {
 
     say "Removing installed files"
     rm -rf -- "$SCRIPT_DIR" "$EFFECT_DIR" "$SAVER_DIR"
+    rm -rf -- "${XDG_RUNTIME_DIR:-/tmp}"/folonium-load.* 2>/dev/null || true
     rm -f -- "$SERVICE_FILE" "$SETTINGS_APP"
 
     clear_folonium_cache

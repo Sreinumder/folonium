@@ -1648,6 +1648,10 @@ var neverMatch = /(?!)/;
 var Config = class {
   constructor(kwinApi) {
     const rc = kwinApi.readConfig;
+    // KWin turns kwinrc edits into fresh readConfig() values only when it is
+    // asked to reconfigure. Keep the reader so the layout tabs can be checked
+    // again after the saver does that without a restart.
+    this.readConfig = rc;
     this.rebuildDelay = rc("RebuildDelay", 10);
     this.tileResizeAmount = rc("TileResizeAmount", 10);
     this.useDBusSaver = rc("UseDBusSaver", false);
@@ -1684,11 +1688,9 @@ var Config = class {
       "foloniumoverview"
     ).split(",").map((x) => x.trim()).filter(Boolean);
     // Keep all nine slots so L1..L9 indices do not shift when a tab is empty.
-    this.customLayoutTexts = [];
-    for (let i = 1; i <= CUSTOM_MAX_WINDOWS; i += 1) {
-      this.customLayoutTexts.push(String(rc("CustomLayout" + i, "") ?? "").trim());
-    }
-    this.customRatios = parseRatioList(rc("CustomRatios", DEFAULT_RATIO_TEXT));
+    const layoutConfig = this.layoutConfig();
+    this.customLayoutTexts = layoutConfig.texts;
+    this.customRatios = layoutConfig.ratios;
     this.customSettings = {
       mirrorLayout: rc("CustomMirrorLayout", false),
       rotateLayout: rc("CustomRotateLayout", false),
@@ -1696,6 +1698,35 @@ var Config = class {
       customLayoutTab: 0,
       customLayouts: {}
     };
+  }
+  // The KCM's layout tabs are CustomLayout1..9 in kwinrc. Empty tabs stay in
+  // the array as empty strings so L1..L9 keep their indices.
+  layoutConfig() {
+    const texts = [];
+    for (let i = 1; i <= CUSTOM_MAX_WINDOWS; i += 1) {
+      texts.push(String(this.readConfig("CustomLayout" + i, "") ?? "").trim());
+    }
+    return {
+      texts,
+      ratios: parseRatioList(this.readConfig("CustomRatios", DEFAULT_RATIO_TEXT))
+    };
+  }
+  // True once KWin has handed us edited layout tabs. The per-text layout cache
+  // would otherwise keep every tab version the user ever saved; clearing it
+  // when the text changes also makes sure edits are parsed again.
+  refreshCustomLayouts() {
+    const next = this.layoutConfig();
+    const textsChanged = next.texts.some(
+      (text, index) => text !== this.customLayoutTexts[index]
+    );
+    const ratiosChanged = next.ratios.length !== this.customRatios.length || next.ratios.some((ratio, index) => ratio.text !== this.customRatios[index].text);
+    if (!textsChanged && !ratiosChanged) {
+      return false;
+    }
+    this.customLayoutTexts = next.texts;
+    this.customRatios = next.ratios;
+    customLayoutSetCache.clear();
+    return true;
   }
   // A bad user-supplied pattern must never stop the whole script from loading.
   // Upstream 1.2.2 groups the comma-separated alternatives and treats an empty
@@ -3811,6 +3842,20 @@ var Controller = class {
       driver.ratioInfo()
     );
   }
+  // The KCM edits the layout tabs in kwinrc. The saver watches that group and
+  // asks KWin to reconfigure, which is the only thing that makes readConfig()
+  // return the new text. Pick the change up here and rebuild the displays so a
+  // Layout Set edit takes effect without restarting KWin.
+  refreshCustomLayouts() {
+    if (!config().refreshCustomLayouts()) {
+      return;
+    }
+    console().log("custom layout config changed, rebuilding displays");
+    for (const display of this.displaysToRebuild()) {
+      this.queueEvent({ t: "updateTiles", display, rebuild: true });
+    }
+    this.refreshSettings();
+  }
   // The popup picks one of the KCM tabs. L1 is the default; an empty tab leaves
   // windows floating instead of falling back to generated layouts.
   selectCustomLayoutTab(display, tabIndex) {
@@ -3834,6 +3879,7 @@ var Controller = class {
   // The overview effect lives in the effect engine and cannot touch this
   // script, so it round-trips its window commands through the saver.
   pollRequest() {
+    this.refreshCustomLayouts();
     this.dbusHandler?.takeRequest();
     this.dbusHandler?.pollOverviewOpen();
   }
@@ -4643,6 +4689,12 @@ var Controller = class {
         if (this.settingsHandler.isVisible()) {
           this.settingsHandler.hide();
           return;
+        }
+        // Without the saver nothing watches kwinrc for layout tab edits, so
+        // ask KWin to reconfigure before the popup reads the tabs. The next
+        // poll rebuilds the displays once readConfig() has the new text.
+        if (!config().useDBusSaver) {
+          this.qmlObjects.dbus?.reconfigureKWin().call();
         }
         const driver = this.getDriver(ev.display);
         if (driver === void 0) {
