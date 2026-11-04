@@ -25,7 +25,7 @@ Uninstalling:
     │             │             │ │             │             │
     └─────────────┴─────────────┘ └─────────────┴─────────────┘
     ```
-  - You can define the rules or layouts for each windows just in plain text in the config:
+  - You can define the rules or layouts for every number of windows just in plain text in the config:
     ```
     [1]
     [1 1]  /1 1/
@@ -33,6 +33,7 @@ Uninstalling:
     [2 2]  [1 2 1]  [1 1 2]  [1 3]  [1 1 1 1]
     [2 1 2]  [1 2 2]  /2 3/  [1 1 1 1 1]
     ```
+    (if there is no layout for n number of windows then the surplus window will go floating)
   - One more thing you can define is the ratios at which want your windows to be split at:
     ```
                  1:1                                2:1
