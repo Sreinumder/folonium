@@ -72,3 +72,23 @@ Uninstalling:
   - features multiple media player controller on top right corner.
     - on left click on the media art. takes you to the desktop and window where the media is playing.
     - it has seekbar, cycleable speed, play/pause, next/previous
+
+
+## Why "Folonium"
+
+It is Polonium with one letter moved: Folonium is the fork of
+[Polonium](https://github.com/zeroxoneafour/polonium)
+
+Folonium = follow + **नियम** (niyam, Sanskrit for *rule*)
+So Polonium but follow the rule
+
+## Credits
+
+This repo is a fork; both halves come from other people's work.
+
+- **[Polonium](https://github.com/zeroxoneafour/polonium)** — the tiling script
+  by Vaughan Milliman ([zeroxoneafour](https://github.com/zeroxoneafour)).
+  MIT licensed. Everything in `folonium/` builds on it.
+- **Polonium Overview** (the "better overview" effect) — the desktop overview
+  effect by [mj0x0](https://github.com/mj0x0). GPL-2.0-or-later. Everything in
+  `folonium-overview/` builds on it.
