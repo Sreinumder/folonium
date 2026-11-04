@@ -53,8 +53,8 @@ Uninstalling:
   - You can also apply transform to modify current layout:
     | Transformation | no mirror | mirror |
     | :------------- | :-------- | :----- |
-    | **no rotate**  | [1 2]<br><pre>┌───┬───┐<br>│   │   │<br>│   ├───┤<br>│   │   │<br>└───┴───┘</pre> | [2 1]<br><pre>┌───────┐<br>│       │<br>├───┬───┤<br>│   │   │<br>└───┴───┘</pre> |
-    | **rotate**     | /1 2/<br><pre>┌───┬───┐<br>│   │   │<br>├───┤   │<br>│   │   │<br>└───┴───┘</pre> | /2 1/<br><pre>┌───┬───┐<br>│   │   │<br>├───┴───┤<br>│       │<br>└───────┘</pre> |
+    | **no rotate**  | [1 2]<br><pre>┌───┬───┐<br>│   │   │<br>│   ├───┤<br>│   │   │<br>└───┴───┘</pre> | [2 1]<br><pre>┌───┬───┐<br>│   │   │<br>├───┤   │<br>│   │   │<br>└───┴───┘</pre>  |
+    | **rotate**     | /1 2/<br><pre>┌───────┐<br>│       │<br>├───┬───┤<br>│   │   │<br>└───┴───┘</pre> | /2 1/<br><pre>┌───┬───┐<br>│   │   │<br>├───┴───┤<br>│       │<br>└───────┘</pre>  |
   - Other than that you can:
     - cycle the order of windows
     - toggle monocle layout
