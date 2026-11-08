@@ -1656,6 +1656,9 @@ var Config = class {
     this.borders = rc("Borders", 4 /* All */);
     this.tiledWindowsBelow = rc("TiledWindowsBelow", true);
     this.tilePopups = rc("TilePopups", false);
+    // Windows smaller than this are transient UI (drag icons, sharing
+    // indicators, tooltips) and cannot fill a tile usefully.
+    this.minWindowSize = rc("MinWindowSize", 200);
     this.windowDragPolicy = rc("WindowDragPolicy", 1 /* Tiled */);
     this.dragRetilePoint = rc("DragRetilePoint", 0 /* Mouse */);
     // Dragged window is always shown at the tiled size scaled by the custom
@@ -3668,10 +3671,27 @@ function isTrackableWindow(window) {
   if (!window.normalWindow || window.specialWindow || window.skipTaskbar || window.onScreenDisplay || window.pid < 0) {
     return false;
   }
+  // X11 and some compositors tag drag icons with _NET_WM_WINDOW_TYPE_DND.
+  if (window.dndIcon) {
+    return false;
+  }
   // A fixed-size window cannot fill a tile. Chromium's screen-share indicator
   // is a normal, non-transient 456x62 window; tiling it squeezed the real
   // window beside it instead of leaving the indicator floating.
   if (window.resizeable === false) {
+    return false;
+  }
+  // Kitty's Wayland file-drag icon is a real normal toplevel with the same
+  // class as the terminal; it is only thumbnail-sized (e.g. 180x32). Ignore
+  // windows too small to hold a useful tile. This also catches other tiny
+  // transient windows that report Normal, such as screen-share indicators.
+  const minSize = config().minWindowSize;
+  const frame = window.frameGeometry;
+  if (
+    frame.width > 0 &&
+    frame.height > 0 &&
+    (frame.width < minSize || frame.height < minSize)
+  ) {
     return false;
   }
   if (!config().tilePopups && (window.popupWindow || window.transient || window.modal)) {

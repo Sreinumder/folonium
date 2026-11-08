@@ -595,6 +595,32 @@
            </property>
           </widget>
          </item>
+         <item row="13" column="0">
+          <widget class="QLabel" name="minWindowSizeLabel">
+           <property name="text">
+            <string>Minimum Window Size (px)</string>
+           </property>
+          </widget>
+         </item>
+         <item row="13" column="2">
+          <widget class="QSpinBox" name="kcfg_MinWindowSize">
+           <property name="minimum">
+            <number>0</number>
+           </property>
+           <property name="maximum">
+            <number>2000</number>
+           </property>
+           <property name="singleStep">
+            <number>10</number>
+           </property>
+           <property name="value">
+            <number>200</number>
+           </property>
+           <property name="toolTip">
+            <string>Windows smaller than this in either dimension are never tiled. Set to 0 to disable.</string>
+           </property>
+          </widget>
+         </item>
          <item row="14" column="0">
           <widget class="QLabel" name="floatingSpawnPointLabel">
            <property name="text">

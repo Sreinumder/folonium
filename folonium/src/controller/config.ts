@@ -73,6 +73,7 @@ export class Config {
     readonly untileWindowClasses: RegExp;
     readonly untileWindowCaptions: RegExp;
     readonly tilePopups: boolean;
+    readonly minWindowSize: number;
 
     constructor(kwinApi: KWin) {
         const rc = kwinApi.readConfig;
@@ -193,6 +194,7 @@ export class Config {
             .map((x: string) => x.trim())
             .filter(Boolean);
         this.tilePopups = rc("TilePopups", false);
+        this.minWindowSize = rc("MinWindowSize", 200);
         this.windowDragPolicy = rc("WindowDragPolicy", DragPolicy.Tiled);
         this.dragRetilePoint = rc("DragRetilePoint", DragRetilePoint.Mouse);
     }

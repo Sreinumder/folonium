@@ -67,6 +67,17 @@ export class WindowHandler {
         if (!this.canBeTiled()) {
             return false;
         }
+        // Drag icons and other tiny transient windows are not real tiled
+        // windows (e.g. the 180x32 Kitty file-drag toplevel).
+        const minSize = config().minWindowSize;
+        const frame = this.window.frameGeometry;
+        if (
+            frame.width > 0 &&
+            frame.height > 0 &&
+            (frame.width < minSize || frame.height < minSize)
+        ) {
+            return false;
+        }
         if (config().untileWindowClasses.test(this.window.resourceClass)) {
             return false;
         }
