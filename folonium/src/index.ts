@@ -362,6 +362,10 @@ var Window = class {
     this.minSize = minSize;
   }
 };
+// Tile trees can come from dbus/disk, so they are validated and bounded to
+// avoid building absurd layouts in the compositor.
+const MAX_TILE_DEPTH = 32;
+const MAX_TILE_COUNT = 256;
 var Tile = class _Tile {
   constructor(parent) {
     this.children = [];
@@ -419,20 +423,38 @@ var Tile = class _Tile {
     };
   }
   static fromJSON(json, parent) {
-    const tile = new _Tile(parent);
-    if (parent != null) {
-      parent.children.push(tile);
-    }
     let obj;
     try {
       obj = typeof json === "string" ? JSON.parse(json) : json;
     } catch (_e) {
+      obj = null;
+    }
+    return _Tile.fromJSONInner(obj, parent, 0, { count: 0 });
+  }
+  static fromJSONInner(obj, parent, depth, budget) {
+    const tile = new _Tile(parent);
+    if (parent != null) {
+      parent.children.push(tile);
+    }
+    budget.count += 1;
+    if (obj == null || typeof obj !== "object") {
       return tile;
     }
-    tile.layoutDirection = obj.layoutDirection;
-    tile.size = obj.size;
+    // 1 = Horizontal, 2 = Vertical; anything else keeps the constructor default.
+    if (obj.layoutDirection === 1 || obj.layoutDirection === 2) {
+      tile.layoutDirection = obj.layoutDirection;
+    }
+    if (Number.isFinite(obj.size) && obj.size > 0) {
+      tile.size = obj.size;
+    }
+    if (!Array.isArray(obj.children) || depth >= MAX_TILE_DEPTH) {
+      return tile;
+    }
     for (const child of obj.children) {
-      _Tile.fromJSON(child, tile);
+      if (budget.count >= MAX_TILE_COUNT) {
+        break;
+      }
+      _Tile.fromJSONInner(child, tile, depth + 1, budget);
     }
     return tile;
   }
@@ -447,10 +469,16 @@ var BaseEngineSettings = class {
     }
     return ret;
   }
+  // Settings can come from dbus/disk, so only copy values whose type matches
+  // the default. A corrupt or hand-edited store must not poison the engine.
   setProps(obj) {
-    if (obj == null) return;
+    if (obj == null || typeof obj !== "object") return;
     for (const key in this) {
-      if (obj.hasOwnProperty(key)) this[key] = obj[key];
+      if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+      const value = obj[key];
+      if (typeof value !== typeof this[key]) continue;
+      if (typeof value === "number" && !Number.isFinite(value)) continue;
+      this[key] = value;
     }
   }
 };
@@ -2494,8 +2522,10 @@ var ShortcutsHandler = class {
       });
     }
   }
-  getTileInDirection(tile, rootTile, edge) {
-    if (tile == rootTile) return null;
+  // Pick the target tile on whichever screen the probe point lands on, so
+  // directional placement works across monitors. KWin 6.7 added
+  // currentDesktopForScreen; older versions only have the active desktop.
+  getTileInDirection(tile, edge) {
     let x = tile.absoluteGeometry.x;
     let y = tile.absoluteGeometry.y;
     switch (edge) {
@@ -2520,6 +2550,13 @@ var ShortcutsHandler = class {
     }
     const point = qt().point(Math.floor(x), Math.floor(y));
     console().debug("selecting tile for point", point);
+    const screen = this.workspace.screenAt(point);
+    if (screen == null) return null;
+    const desktop = typeof this.workspace.currentDesktopForScreen === "function"
+      ? this.workspace.currentDesktopForScreen(screen)
+      : this.workspace.currentDesktop;
+    const rootTile = this.workspace.rootTile(screen, desktop);
+    if (rootTile == null || tile == rootTile) return null;
     return rootTile.pick(point);
   }
   // Left/Up step back through the engine's window order, Right/Down step
@@ -2548,11 +2585,7 @@ var ShortcutsHandler = class {
     }
     const currentTile = window.tile;
     if (currentTile === null) return;
-    let rootTile = currentTile;
-    while (rootTile.parent != null) {
-      rootTile = rootTile.parent;
-    }
-    const targetTile = this.getTileInDirection(currentTile, rootTile, edge);
+    const targetTile = this.getTileInDirection(currentTile, edge);
     if (targetTile == null) return;
     let direction = void 0;
     switch (edge) {

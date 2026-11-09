@@ -7,28 +7,17 @@ import {
     Direction,
     LayoutDirection,
 } from "./engine";
-import { BTreeEngine } from "./layouts/btree";
-import { HalfEngine } from "./layouts/half";
-import { ThreeColumnEngine } from "./layouts/threecolumn";
-import { PillarEngine } from "./layouts/pillars";
-import { PagerEngine } from "./layouts/pager";
 import { KwinEngine } from "./layouts/kwin";
 import { CustomEngine } from "./layouts/custom";
 
 export { Window, Tile, Direction, LayoutDirection };
 
-export { InsertionStyle as BTreeInsertionStyle } from "./layouts/btree";
-export { InsertionStyle as PillarsInsertionStyle } from "./layouts/pillars";
-
+// Values 5 and 6 are kept stable: they are what saved settings and the saver
+// store use. Older saves from the removed engines (0-4) resolve to Custom.
 export enum TilingEngineType {
-    BTree = 0,
-    Half,
-    ThreeColumn,
-    Pillars,
-    Pager,
-    KWin,
-    Custom,
-    _Loop,
+    KWin = 5,
+    Custom = 6,
+    _Loop = 7,
 }
 
 export class TilingEngine {
@@ -38,37 +27,16 @@ export class TilingEngine {
     readonly engineType: TilingEngineType;
 
     constructor(type: TilingEngineType, settings: object) {
-        console().error("TILING ENGINE CONSTRUCTOR START: type=" + type + " settings keys=" + Object.keys(settings));
-        this.engineType = type;
-        switch (type) {
-            case TilingEngineType.BTree:
-                this.engine = new BTreeEngine();
-                break;
-            case TilingEngineType.Half:
-                this.engine = new HalfEngine();
-                break;
-            case TilingEngineType.ThreeColumn:
-                this.engine = new ThreeColumnEngine();
-                break;
-            case TilingEngineType.Pillars:
-                this.engine = new PillarEngine();
-                break;
-            case TilingEngineType.Pager:
-                this.engine = new PagerEngine();
-                break;
-            case TilingEngineType.KWin:
-                this.engine = new KwinEngine();
-                break;
-            case TilingEngineType.Custom:
-                this.engine = new CustomEngine();
-                break;
-            default:
-                console().warn("Invalid tiling engine type", type);
-                this.engineType = TilingEngineType.BTree;
-                this.engine = new BTreeEngine();
-                break;
+        // The script has one tiling engine plus KWin's own tiling. Old saved
+        // engine numbers (0-4) all resolve to Custom so their displays keep
+        // tiling after an upgrade.
+        if (type === TilingEngineType.KWin) {
+            this.engineType = TilingEngineType.KWin;
+            this.engine = new KwinEngine();
+        } else {
+            this.engineType = TilingEngineType.Custom;
+            this.engine = new CustomEngine();
         }
-        console().warn("TilingEngine constructor: type:", type, "settings:", settings);
         this.engine.setEngineSettings(settings);
         this.engineRootTile = this.engine.buildLayout();
     }

@@ -367,26 +367,13 @@ export class Driver {
 
 // want to completely separate the engine and kwin, so we set config defaults here not in engine
 function getConfigEngineSettings(engineType: TilingEngineType): object {
-    switch (engineType) {
-        case TilingEngineType.BTree:
-            return config().btreeSettings;
-        case TilingEngineType.Half:
-            return config().halfSettings;
-        case TilingEngineType.ThreeColumn:
-            return config().threeColumnSettings;
-        case TilingEngineType.Pillars:
-            return config().pillarSettings;
-        case TilingEngineType.Pager:
-            return config().pagerSettings;
-        case TilingEngineType.KWin:
-            // no settings for kwin
-            return {};
-        case TilingEngineType.Custom:
-            return config().customSettings;
-        default:
-            console().error("engine type", engineType, "is invalid");
-            return {};
+    if (engineType === TilingEngineType.KWin) {
+        // no settings for kwin
+        return {};
     }
+    // Custom is the only Folonium layout engine; anything saved by a removed
+    // engine resolves to its defaults rather than failing to load.
+    return config().customSettings;
 }
 
 function setTiledProps(window: KwinWindow) {
