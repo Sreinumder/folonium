@@ -184,6 +184,21 @@ var Display = class _Display {
   static setWorkspace(workspace) {
     this.workspace = workspace;
   }
+  // The strip removes its sandbox desktop while windows still hold a reference
+  // to it for a moment. Such a desktop has no id and must not produce a
+  // display, or driver lookups would chase a key that can never exist.
+  static isLiveDesktop(desktop) {
+    if (desktop === null || desktop === void 0) return false;
+    if (desktop.id === null || desktop.id === void 0) return false;
+    const live = this.workspace?.desktops;
+    if (live === void 0 || live === null) return true;
+    for (const candidate of live) {
+      if (candidate === null || candidate === void 0) continue;
+      if (candidate.id === null || candidate.id === void 0) continue;
+      if (String(candidate.id) === String(desktop.id)) return true;
+    }
+    return false;
+  }
   constructor(desktop, activity, output) {
     this.desktop = desktop;
     this.activity = activity;
@@ -206,6 +221,8 @@ var Display = class _Display {
   }
   static *generate(desktops, activities, outputs) {
     for (const desktop of desktops) {
+      if (desktop === null || desktop === void 0) continue;
+      if (desktop.id === null || desktop.id === void 0) continue;
       for (const activity of activities) {
         for (const output of outputs) {
           yield new _Display(desktop, activity, output);
@@ -241,6 +258,7 @@ var Display = class _Display {
       ? activities
       : this.workspace?.activities ?? [];
     for (const desktop of desktopList) {
+      if (!_Display.isLiveDesktop(desktop)) continue;
       for (const activity of activityList) {
         yield new _Display(desktop, activity, output);
       }
@@ -468,6 +486,11 @@ var BaseEngineSettings = class {
 // as separate variants. Dropping one as an "equivalent" layout made the second
 // variant silently rotate like the first.
 var CUSTOM_MAX_WINDOWS = 9;
+// The strip contracts every tiled window on a desktop, so its capacity is not
+// tied to the nine layout tabs. Windows that were already floating stay
+// floating; this only stops a newly opened window from being disowned while
+// the strip is open.
+var STRIP_MAX_WINDOWS = 32;
 var CUSTOM_ENGINE_TYPE = 6;
 var KWIN_ENGINE_TYPE = 5;
 var DEFAULT_RATIO_TEXT = "2:1 3:2 1:1 2:3 1:2\n1:1:1 2:1:1 1:2:1 1:1:2";
@@ -823,7 +846,40 @@ var CustomEngine = class {
     this.currentKey = null;
     this.builtKey = null;
     this.currentCount = 0;
+    // The window strip temporarily replaces every layout with one flat row of
+    // equal-width columns. It is volatile: nothing is written to the saver, so
+    // the user's real layouts come back as soon as the strip closes.
+    this.stripLayout = false;
+    this.stripColumns = 3;
     this.settings = new CustomEngineSettings();
+  }
+  setStripLayout(enabled, columns) {
+    const nextColumns = Math.max(2, Math.min(CUSTOM_MAX_WINDOWS, Math.round(columns)));
+    if (this.stripLayout === enabled && this.stripColumns === nextColumns) {
+      return false;
+    }
+    this.stripLayout = enabled;
+    this.stripColumns = nextColumns;
+    // The strip tree is built directly and is not cached in sizedLayouts, so
+    // drop the old build marker before the next normal layout is chosen.
+    this.currentAst = null;
+    this.currentKey = null;
+    this.builtKey = null;
+    return true;
+  }
+  // The strip is a single row: every window gets one equal-width column, so a
+  // desktop that was monocled or stacked becomes a flat [1 1 1 ...] while the
+  // strip is open. Nothing is cached or saved, so the real layout returns when
+  // the strip closes.
+  stripLayoutFor(count) {
+    if (count <= 0) {
+      return null;
+    }
+    const children = [];
+    for (let i = 0; i < count; i += 1) {
+      children.push(layoutLeaf());
+    }
+    return layoutSplit(1 /* Horizontal */, children, children.map(() => 1));
   }
   getEngineSettings() {
     return this.settings.getProps();
@@ -1212,7 +1268,7 @@ var CustomEngine = class {
       this.settings.rotateLayout = false;
       this.settings.mirrorLayout = false;
     }
-    if (this.monocleActive()) {
+    if (!this.stripLayout && this.monocleActive()) {
       // One tile holds every window, so KWin stacks them full size and the
       // layout machinery stays out of the way.
       this.currentAst = null;
@@ -1233,7 +1289,20 @@ var CustomEngine = class {
       this.currentCount = 0;
       return rootTile;
     }
-    const custom = this.getCustomLayout(count);
+    let custom;
+    if (this.stripLayout) {
+      const ast = this.stripLayoutFor(count);
+      if (ast === null) {
+        this.currentAst = null;
+        this.currentKey = null;
+        this.builtKey = null;
+        this.currentCount = count;
+        return rootTile;
+      }
+      custom = { ast, key: "strip:" + this.stripColumns + ":" + count };
+    } else {
+      custom = this.getCustomLayout(count);
+    }
     if (custom === null) {
       this.currentAst = null;
       this.currentKey = null;
@@ -1251,6 +1320,11 @@ var CustomEngine = class {
   }
   buildTile(tile, node, cursor) {
     if (node.kind === "leaf") {
+      // An empty leaf holds a column's width open without taking a window. It
+      // must not advance the cursor.
+      if (node.empty === true) {
+        return;
+      }
       const window = this.windows[cursor.i];
       cursor.i += 1;
       if (window === void 0) {
@@ -1342,11 +1416,18 @@ var CustomEngine = class {
   }
   // Monocle is a stacking view of several windows. A desktop with no window,
   // or with just one, has nothing to stack, so it stays on the tiled layout and
-  // the monocle toggle is a no-op there.
+  // the monocle toggle is a no-op there. The strip is a flat row by definition,
+  // so it always reports monocle as off while it is open.
   monocleActive() {
+    if (this.stripLayout) {
+      return false;
+    }
     return this.settings !== void 0 && this.settings.monocle === true && this.windows.length > 1;
   }
   tiledCapacity() {
+    if (this.stripLayout) {
+      return STRIP_MAX_WINDOWS;
+    }
     if (this.monocleActive()) {
       return CUSTOM_MAX_WINDOWS;
     }
@@ -1391,7 +1472,8 @@ var CustomEngine = class {
     this.settings.customLayouts[String(layouts[0].count)] = next.text;
     return true;
   }
-  // The shape on screen, written in the DSL.
+  // The shape on screen, written in the DSL. The strip reports its own flat row
+  // so a monocled desktop is drawn as [1 1 ...] while the strip is open.
   shapeText() {
     return this.monocleActive() ? "" : this.tiledShapeText();
   }
@@ -1403,6 +1485,10 @@ var CustomEngine = class {
       : this.windows.length;
     if (count === 0) {
       return "";
+    }
+    if (this.stripLayout) {
+      const strip = this.stripLayoutFor(count);
+      return strip === null ? "" : layoutText(strip);
     }
     if (this.currentAst !== null && this.currentCount === count) {
       return layoutText(this.currentAst);
@@ -1561,6 +1647,12 @@ var TilingEngine = class {
   }
   // Only the Custom engine understands these; KWin's own tiling keeps working
   // unchanged and simply returns false.
+  setStripLayout(enabled, columns) {
+    if (typeof this.engine.setStripLayout === "function") {
+      return this.engine.setStripLayout(enabled, columns) === true;
+    }
+    return false;
+  }
   resetLayoutSizes() {
     if (typeof this.engine.resetLayoutSizes === "function") {
       this.engine.resetLayoutSizes();
@@ -2778,6 +2870,7 @@ var DBusHandler = class {
     dbusQml.getSettings().finished.connect(this.getSettingsCallback.bind(this));
     dbusQml.takeRequest().finished.connect(this.takeRequestCallback.bind(this));
     dbusQml.getOverviewOpen().finished.connect(this.getOverviewOpenCallback.bind(this));
+    dbusQml.getStripOpen().finished.connect(this.getStripOpenCallback.bind(this));
   }
   // The overview turns monocle off on real desktops while it is open so they
   // show their tiled layout, then back on when it closes. The flag survives in
@@ -2788,6 +2881,16 @@ var DBusHandler = class {
   }
   getOverviewOpenCallback([open]) {
     controller().setOverviewOpen(open === true);
+  }
+  // The strip is per output: each screen-wide view tells the saver which
+  // output it covers, and the script re-tiles the desktops on those outputs.
+  // Like monocle suspension, the flag is stale-safe so a crashed effect cannot
+  // leave the desktop stuck in the strip layout.
+  pollStripOpen() {
+    this.dbusQml.getStripOpen().call();
+  }
+  getStripOpenCallback([state]) {
+    controller().setStripOpen(state);
   }
   // Ask the saver for the command the overview left behind, if any.
   takeRequest() {
@@ -3306,7 +3409,12 @@ var Driver = class {
     return JSON.stringify({
       layout: this.shapeText(),
       mono: this.isMonocle(),
-      shape: this.tiledShapeText()
+      shape: this.tiledShapeText(),
+      // The strip needs the engine's window order to keep cards in layout
+      // order, and the engine name to tell a KWin-owned tile from a floating
+      // window. Both are volatile and only used by the overview effect.
+      engine: this.tilingEngine.engineType === KWIN_ENGINE_TYPE ? "kwin" : "custom",
+      order: this.windowOrder().map((window) => String(window.internalId))
     });
   }
   resetTilingEngine() {
@@ -3740,6 +3848,12 @@ var Controller = class {
     // Displays whose monocle the overview turned off while it is open, so the
     // real tiled layout is what the overview shows. Restored on close.
     this.monocleSuspended = /* @__PURE__ */ new Map();
+    // Displays currently re-tiled into the window strip, keyed by display, with
+    // the output and column count that put them there. Volatile, like monocle.
+    this.stripSuspended = /* @__PURE__ */ new Map();
+    // requestTimer runs faster than the layout-config refresh; this throttles
+    // the expensive config read back to roughly the old cadence.
+    this.pollTicks = 0;
     // False until the open windows have been adopted at startup. An empty
     // window list before that means "not known yet", not "the user closed
     // everything", so monocle must not be cleared on it.
@@ -3762,7 +3876,10 @@ var Controller = class {
       this.dbusHandler = new DBusHandler(this.qmlObjects.dbus);
     }
     this.requestTimer = this.qmlObjects.requestTimer;
-    this.requestTimer.interval = 500;
+    // The overview and strip need to turn their real-desktop layout changes
+    // around quickly; 500 ms made the strip visibly reflow after it opened.
+    // refreshCustomLayouts() stays on the old cadence below.
+    this.requestTimer.interval = 100;
     this.requestTimer.triggered.connect(this.pollRequest.bind(this));
     if (config().mouseFollowsFocus) {
       this.mffHandler = new MouseFollowsFocusHandler(
@@ -3881,9 +3998,13 @@ var Controller = class {
   // The overview effect lives in the effect engine and cannot touch this
   // script, so it round-trips its window commands through the saver.
   pollRequest() {
-    this.refreshCustomLayouts();
+    this.pollTicks = (this.pollTicks + 1) % 5;
+    if (this.pollTicks === 0) {
+      this.refreshCustomLayouts();
+    }
     this.dbusHandler?.takeRequest();
     this.dbusHandler?.pollOverviewOpen();
+    this.dbusHandler?.pollStripOpen();
   }
   handleRequest(request) {
     if (request.t === "swap") {
@@ -3930,6 +4051,140 @@ var Controller = class {
       this.workspace.activeWindow = target;
       // No moveMouseToFocus here: a preview cell is a placeholder, not where the
       // window really sits, so focusing it must not pull the pointer anywhere.
+    }
+    // The strip's temporary desktop is removed by the script rather than the
+    // effect: the effect's views are destroyed as soon as it deactivates, and
+    // KWin needs a moment to apply the clones' desktop changes first.
+    if (request.t === "stripSandbox") {
+      const ids = Array.isArray(request.ids) ? request.ids.map(String) : [];
+      const outputName = typeof request.output === "string" ? request.output : "";
+      const doomed = [];
+      for (const desktop of Array.from(this.workspace.desktops)) {
+        if (ids.indexOf(String(desktop.id)) !== -1) {
+          doomed.push(desktop);
+        }
+      }
+      for (const desktop of doomed) {
+        this.workspace.removeDesktop(desktop);
+      }
+      for (const display of Display.generate(
+        this.workspace.desktops,
+        [this.workspace.currentActivity],
+        this.workspace.screens
+      )) {
+        if (display.output === null || display.output === void 0) continue;
+        if (outputName !== "" && display.output.name !== outputName) continue;
+        if (this.getDriver(display) === void 0) continue;
+        this.queueEvent({ t: "updateTiles", display, rebuild: true });
+      }
+      return;
+    }
+    // After the strip has removed its clones, the real desktops need their
+    // windows managed into their own tiles again even while they are hidden.
+    // KWin defers the geometry until each desktop is shown, but restoring the
+    // tile membership here means switching to it is instant.
+    if (request.t === "rebuild") {
+      const outputName = typeof request.output === "string" ? request.output : "";
+      for (const display of Display.generate(
+        this.workspace.desktops,
+        [this.workspace.currentActivity],
+        this.workspace.screens
+      )) {
+        if (display.output === null || display.output === void 0) continue;
+        if (outputName !== "" && display.output.name !== outputName) continue;
+        if (this.getDriver(display) === void 0) continue;
+        this.queueEvent({ t: "updateTiles", display, rebuild: true });
+      }
+    }
+  }
+  // The window strip clones every window on its output onto a temporary
+  // sandbox desktop, makes that desktop current on that output, and lays it
+  // out as one flat row. KWin only applies tile geometry to a current desktop,
+  // so this is the one place where the real windows can be contracted for the
+  // live thumbnails. The strip effect owns the sandbox and deletes it on close;
+  // this method only touches the sandbox driver, never the user's desktops.
+  setStripOpen(state) {
+    let outputs = null;
+    let sandboxes = null;
+    try {
+      const parsed = typeof state === "string" && state !== "" ? JSON.parse(state) : state;
+      if (parsed !== null && typeof parsed === "object") {
+        if (parsed.outputs !== null && typeof parsed.outputs === "object") {
+          outputs = parsed.outputs;
+        }
+        if (parsed.desktops !== null && typeof parsed.desktops === "object") {
+          sandboxes = parsed.desktops;
+        }
+      }
+    } catch (e) {
+      outputs = null;
+      sandboxes = null;
+    }
+    const desired = /* @__PURE__ */ new Map();
+    if (outputs !== null) {
+      for (const name of Object.keys(outputs)) {
+        const percent = Number(outputs[name]);
+        if (!Number.isFinite(percent) || percent <= 0) continue;
+        const desktopId = sandboxes !== null ? String(sandboxes[name] ?? "") : "";
+        if (desktopId === "") continue;
+        desired.set(name, {
+          columns: Math.max(2, Math.min(STRIP_MAX_WINDOWS, Math.round(100 / percent))),
+          desktopId
+        });
+      }
+    }
+    const touched = /* @__PURE__ */ new Set();
+    // Close (or move to a new sandbox) strips that are no longer requested.
+    for (const [key, entry] of Array.from(this.stripSuspended)) {
+      const want = desired.get(entry.output);
+      if (want !== void 0 && want.columns === entry.columns && want.desktopId === entry.desktopId) {
+        continue;
+      }
+      this.stripSuspended.delete(key);
+      const driver = this.drivers.get(key);
+      if (driver === void 0) continue;
+      // The sandbox desktop may already be gone by the time the closed strip
+      // is polled; a deleted desktop has nothing left to restore.
+      const alive = this.workspace.desktops.some(
+        (desktop) => String(desktop.id) === String(entry.desktopId)
+      );
+      if (!alive) continue;
+      if (driver.tilingEngine.setStripLayout(false, entry.columns)) {
+        touched.add(driver);
+      }
+    }
+    // Open strips and pick up sandbox displays that appeared while one is open.
+    for (const driver of this.drivers.values()) {
+      const display = driver.display;
+      if (display === null || display === void 0 || display.output == null) continue;
+      const want = desired.get(display.output.name);
+      if (want === void 0) continue;
+      if (display.activity !== this.workspace.currentActivity) continue;
+      if (driver.getEngineType() !== CUSTOM_ENGINE_TYPE) continue;
+      // Only the sandbox desktop may be re-tiled. Touching the user's real
+      // desktops would evict the cloned windows from the sandbox tile.
+      if (String(display.desktop.id) !== want.desktopId) continue;
+      const key = display.toSymbol();
+      const suspended = this.stripSuspended.get(key);
+      // Call every poll: a display can be rebuilt onto a fresh engine (for
+      // example after an engine toggle) and lose the volatile strip flag.
+      const changed = driver.tilingEngine.setStripLayout(true, want.columns);
+      if (suspended !== undefined && suspended.columns === want.columns && suspended.desktopId === want.desktopId && !changed) {
+        continue;
+      }
+      this.stripSuspended.set(key, {
+        output: display.output.name,
+        columns: want.columns,
+        desktopId: want.desktopId
+      });
+      if (changed) {
+        touched.add(driver);
+      }
+    }
+    for (const driver of touched) {
+      const display = driver.display;
+      if (display === null || display === void 0 || display.output == null) continue;
+      this.queueEvent({ t: "updateTiles", display, rebuild: true });
     }
   }
   // The overview shows real tiled desktops, so monocle desktops are switched
@@ -4000,6 +4255,10 @@ var Controller = class {
     if (driver.getEngineType() !== CUSTOM_ENGINE_TYPE) return false;
     if (driver.getEngineSettings().monocle !== true) return false;
     if (this.overviewOpen) return false;
+    // The strip is showing every window tiled; clearing monocle here would
+    // make the user's preference disappear just because a desktop dropped to
+    // one window while the strip was open.
+    if (this.stripSuspended.size > 0) return false;
     driver.changeTilingEngine(void 0, { monocle: false });
     return true;
   }
@@ -4031,6 +4290,9 @@ var Controller = class {
       }
       for (const [_, display] of rebuildDisplays) {
         if (display.desktop == void 0 || display.output == void 0) {
+          continue;
+        }
+        if (!Display.isLiveDesktop(display.desktop)) {
           continue;
         }
         console().debug("Rebuilding for display", display.toString());
@@ -4488,12 +4750,14 @@ var Controller = class {
   }
   updateDrivers() {
     const ret = [];
+    const live = /* @__PURE__ */ new Set();
     for (const display of Display.generate(
       this.workspace.desktops,
       this.workspace.activities,
       this.workspace.screens
     )) {
       const id = display.toSymbol();
+      live.add(id);
       const driver = this.drivers.get(id);
       if (driver === void 0) {
         console().debug(
@@ -4506,6 +4770,16 @@ var Controller = class {
         this.dbusHandler?.getSettings(display);
         ret.push(display);
       }
+    }
+    // The strip creates and deletes a sandbox desktop. Drop its driver (and
+    // any other driver whose desktop disappeared) so repeated strips do not
+    // accumulate stale engines.
+    for (const key of Array.from(this.drivers.keys())) {
+      if (live.has(key)) {
+        continue;
+      }
+      this.drivers.delete(key);
+      this.stripSuspended.delete(key);
     }
     return ret;
   }
@@ -4532,7 +4806,9 @@ var Controller = class {
     if (driver.getEngineType() === KWIN_ENGINE_TYPE) {
       return [];
     }
-    driver.updateTiles();
+    if (driver.engineRootTile !== null) {
+      driver.updateTiles();
+    }
     const engine = driver.getEngineType();
     const settings = driver.getEngineSettings();
     const settingsJson = JSON.stringify(settings);
@@ -4774,6 +5050,11 @@ var Controller = class {
     } else if (typeof display === "symbol") {
       id = display;
     } else if (typeof display === "object") {
+      // A desktop removed by the strip can linger on a window for a moment.
+      // No driver can ever exist for it, and looking one up would log errors.
+      if (display.desktop !== void 0 && !Display.isLiveDesktop(display.desktop)) {
+        return void 0;
+      }
       id = display.toSymbol();
     } else {
       console().error("Invalid call to getDriver");

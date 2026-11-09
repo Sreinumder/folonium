@@ -94,6 +94,21 @@ Item {
         method: "GetOverviewOpen";
     }
 
+    // Every output's strip state, polled by the script. Kept separate from the
+    // overview flag because the strip is per output and each screen view
+    // refreshes its own entry.
+    function getStripOpen() {
+        return getStripOpenObj;
+    }
+    DBusCall {
+        id: getStripOpenObj;
+
+        service: "xyz.vaughanm.folonium";
+        path: "/saver";
+        dbusInterface: "xyz.vaughanm.folonium";
+        method: "GetStripOpen";
+    }
+
     function moveMouseToFocus() {
         return moveMouseToFocusObj;
     }

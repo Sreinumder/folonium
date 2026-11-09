@@ -58,6 +58,7 @@ check_sources() {
         "$REPO/folonium-overview/contents/config/main.xml" \
         "$REPO/folonium-overview/contents/ui/main.qml" \
         "$REPO/folonium-overview/contents/ui/ScreenView.qml" \
+        "$REPO/folonium-overview/contents/ui/StripView.qml" \
         "$REPO/folonium-overview/contents/ui/config.ui" \
         "$REPO/folonium-saver/folonium_saver.py"; do
         [ -f "$f" ] || die "missing $f"
@@ -217,6 +218,11 @@ install_all() {
     restart_saver
     reload_kwin
     say "Done. Toggle the overview with Meta+G (KWin shortcut \"Better Overview\")."
+    say "The window strip is the unbound KWin shortcut \"FoloniumWindowStrip\"."
+    # KWin's shared QML engine caches effect files by URL and, unlike the
+    # tiling script, an effect cannot be loaded from a fresh path. A changed
+    # main.qml only takes effect after the compositor restarts.
+    say "KWin caches effect QML: if the new shortcut is missing, log out and back in."
 }
 
 uninstall_all() {

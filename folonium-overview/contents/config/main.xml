@@ -11,6 +11,9 @@
         <entry name="TransposeDesktopClick" type="Bool">
             <default>true</default>
         </entry>
+        <entry name="StripWindowWidth" type="Int">
+            <default>33</default>
+        </entry>
         <entry name="BorderActivate" type="IntList" />
         <entry name="TouchBorderActivate" type="IntList" />
 </group>

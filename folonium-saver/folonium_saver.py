@@ -563,6 +563,15 @@ class Saver:
         # close, but a crash or a killed KWin would leave it stuck on and keep
         # monocle off for good, so a stale flag is reported as closed.
         self.overview_seen = 0.0
+        # Outputs whose real desktops are temporarily laid out as a window
+        # strip, with the requested card width and the last refresh time. The
+        # strip effect refreshes its output once a second; a stale entry is
+        # dropped, so a crash restores the real layout on its own.
+        self.strip_outputs = {}
+        # Sandbox desktops the strip has already deleted. A state write can
+        # still arrive after the desktop is gone, so remember the id and drop
+        # those writes instead of letting the state map grow all session.
+        self.forgotten_desktops = set()
         # Cursor position for hover desktop switching.
         self.cursor_x = 0
         self.cursor_y = 0
@@ -603,6 +612,14 @@ class Saver:
             # second while it is actually open.
             fresh = (time.time() - self.overview_seen) < OVERVIEW_STALE
             return ("b", (self.overview_open and fresh,))
+        if member == "SetStripOpen":
+            # The fourth argument is the temporary sandbox desktop the strip
+            # cloned the windows onto. It can be absent from older callers.
+            desktop = args[3] if len(args) > 3 else ""
+            self.set_strip_open(args[0], args[1], args[2], desktop)
+            return ("", ())
+        if member == "GetStripOpen":
+            return ("s", (self.get_strip_open(),))
         if member == "GetMedia":
             if self.media is None:
                 return ("s", ("",))
@@ -684,7 +701,61 @@ class Saver:
         except (ValueError, TypeError):
             log(f"SetState got unparseable JSON, ignoring: {state_json!r}")
             return
+        # A late write for a desktop the strip already deleted must not bring
+        # its state entry back.
+        try:
+            parsed_key = json.loads(display_key)
+        except (ValueError, TypeError):
+            parsed_key = None
+        if isinstance(parsed_key, dict):
+            if str(parsed_key.get("d", "")) in self.forgotten_desktops:
+                return
         self.state[display_key] = state_json
+
+    def set_strip_open(self, open, output, width, desktop=""):
+        output = str(output or "")
+        if open is True:
+            try:
+                width = int(width)
+            except (ValueError, TypeError):
+                width = 33
+            if width < 1:
+                width = 33
+            self.strip_outputs[output] = {
+                "width": width,
+                "desktop": str(desktop or ""),
+                "seen": time.time(),
+            }
+            if desktop:
+                self.forgotten_desktops.discard(str(desktop))
+        else:
+            self.strip_outputs.pop(output, None)
+            # The sandbox desktop is gone for good, so its saved per-display
+            # state would otherwise linger in memory for the whole session.
+            if desktop:
+                if len(self.forgotten_desktops) > 512:
+                    self.forgotten_desktops.clear()
+                self.forgotten_desktops.add(desktop)
+                for key in list(self.state.keys()):
+                    try:
+                        parsed = json.loads(key)
+                    except (ValueError, TypeError):
+                        continue
+                    if isinstance(parsed, dict) and str(parsed.get("d", "")) == desktop:
+                        self.state.pop(key, None)
+
+    def get_strip_open(self):
+        now = time.time()
+        outputs = {}
+        desktops = {}
+        for output, entry in list(self.strip_outputs.items()):
+            if now - entry["seen"] < OVERVIEW_STALE:
+                outputs[output] = entry["width"]
+                if entry.get("desktop"):
+                    desktops[output] = entry["desktop"]
+            else:
+                self.strip_outputs.pop(output, None)
+        return json.dumps({"outputs": outputs, "desktops": desktops})
 
     def set_request(self, request_json):
         if not isinstance(request_json, str) or len(request_json) > STATE_LIMIT:
@@ -851,6 +922,15 @@ INTROSPECTION_XML = (
     "    </method>\n"
     '    <method name="GetOverviewOpen">\n'
     '      <arg name="open" type="b" direction="out"/>\n'
+    "    </method>\n"
+    '    <method name="SetStripOpen">\n'
+    '      <arg name="open" type="b" direction="in"/>\n'
+    '      <arg name="output" type="s" direction="in"/>\n'
+    '      <arg name="width" type="i" direction="in"/>\n'
+    '      <arg name="desktop" type="s" direction="in"/>\n'
+    "    </method>\n"
+    '    <method name="GetStripOpen">\n'
+    '      <arg name="state_json" type="s" direction="out"/>\n'
     "    </method>\n"
     '    <method name="GetMedia">\n'
     '      <arg name="players_json" type="s" direction="out"/>\n'

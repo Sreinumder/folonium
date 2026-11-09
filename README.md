@@ -73,6 +73,17 @@ Uninstalling:
   - features multiple media player controller on top right corner.
     - on left click on the media art. takes you to the desktop and window where the media is playing.
     - it has seekbar, cycleable speed, play/pause, next/previous
+  - includes a horizontal window strip as a second mode, on the unbound
+    **FoloniumWindowStrip** shortcut. It lays every window on the current
+    output side by side across all desktops; the focused card sticks to the
+    left or right screen edge. Card width is configurable as a percentage of
+    the screen in the effect settings. Cards take each window's aspect ratio,
+    so a 16:9 window fills its card instead of being letterboxed; raise the
+    percentage for larger and sharper previews. To contract windows for the
+    live previews without touching any real desktop, the strip clones them
+    onto a temporary sandbox desktop, lays that desktop out as one row, and
+    deletes it when the strip closes; every window keeps its original desktop
+    list, layout and monocle state.
 
 
 ## Why "Folonium"

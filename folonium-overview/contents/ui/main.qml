@@ -18,16 +18,22 @@ KWinComponents.SceneEffect {
     onDeactivated: kwinRunning = false
     readonly property int animationDuration: Kirigami.Units.longDuration
 
+    // The effect has two views: the desktop grid and the horizontal window
+    // strip. mode is set before activating, so the delegate below is always
+    // the one KWin instantiates.
+    property string mode: "grid"
+
     // KWin's shared QML engine caches files by URL for the whole session; the stamp makes re-enabling the effect load edited files
-    property var mainDelegate: Qt.createComponent("ScreenView.qml?" + Date.now())
-    delegate: mainDelegate
+    property var gridDelegate: Qt.createComponent("ScreenView.qml?" + Date.now())
+    property var stripDelegate: Qt.createComponent("StripView.qml?" + Date.now())
+    delegate: effect.mode === "strip" ? effect.stripDelegate : effect.gridDelegate
 
     Instantiator {
         model: effect.configuration.BorderActivate
         KWinComponents.ScreenEdgeHandler {
             mode: KWinComponents.ScreenEdgeHandler.Pointer
             edge: modelData
-            onActivated: effect.toggle()
+            onActivated: effect.toggleMode("grid")
         }
     }
 
@@ -36,7 +42,7 @@ KWinComponents.SceneEffect {
         KWinComponents.ScreenEdgeHandler {
             mode: KWinComponents.ScreenEdgeHandler.Touch
             edge: modelData
-            onActivated: effect.toggle()
+            onActivated: effect.toggleMode("grid")
         }
     }
 
@@ -45,7 +51,18 @@ KWinComponents.SceneEffect {
         // even though the effect is now Folonium's.
         name: "Better Overview"
         text: i18nd("kwin_effect_foloniumoverview", "Toggle Folonium Overview")
-        onActivated: effect.toggle()
+        // Default binding, so a fresh install and any shortcut cleanup keep
+        // the usual Meta+G instead of dropping the association.
+        sequence: "Meta+G"
+        onActivated: effect.toggleMode("grid")
+    }
+
+    KWinComponents.ShortcutHandler {
+        // Deliberately unbound by default: the strip is a second, optional
+        // overview mode and must not steal a key from anyone.
+        name: "FoloniumWindowStrip"
+        text: i18nd("kwin_effect_foloniumoverview", "Toggle Folonium Window Strip")
+        onActivated: effect.toggleMode("strip")
     }
 
     Timer {
@@ -68,12 +85,42 @@ KWinComponents.SceneEffect {
         }
     }
 
-    function toggle() {
-        if (activated) {
-            deactivate();
-        } else {
-            activate();
+    // Switching between the grid and the strip needs a fresh delegate, and
+    // KWin only reads it when the effect starts. Close the old mode first,
+    // then reopen the requested one after the fade.
+    property string pendingMode: ""
+    Timer {
+        id: modeTimer
+        // Slightly longer than the fade so the old delegate's views are hidden
+        // before KWin instantiates the new mode's delegate.
+        interval: effect.animationDuration + 50
+        onTriggered: {
+            if (effect.pendingMode === "") {
+                return;
+            }
+            effect.mode = effect.pendingMode;
+            effect.pendingMode = "";
+            effect.activate();
         }
+    }
+
+    function toggleMode(next) {
+        if (activated) {
+            if (mode === next) {
+                deactivate();
+                return;
+            }
+            pendingMode = next;
+            deactivate();
+            modeTimer.restart();
+            return;
+        }
+        mode = next;
+        activate();
+    }
+
+    function toggle() {
+        toggleMode(mode);
     }
 
     function activate() {
