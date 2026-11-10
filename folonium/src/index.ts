@@ -63,11 +63,6 @@ var StackLike = class {
     }
     return void 0;
   }
-  multipush(values) {
-    for (const value of values) {
-      this.push(value);
-    }
-  }
   some(fn) {
     for (const x of this) {
       if (fn(x)) {
@@ -1234,12 +1229,9 @@ var CustomEngine = class {
     }
     this.tileMap.clear();
     this.windowTiles.clear();
-    // A lone window has no split to rotate or mirror. Clearing the view flags
-    // here stops the old state from shaping the next window added.
-    if (this.windows.length === 1) {
-      this.settings.rotateLayout = false;
-      this.settings.mirrorLayout = false;
-    }
+    // A lone window has no split to rotate or mirror, and both transforms are
+    // no-ops on a leaf. Leave the view flags alone so they still apply when a
+    // second window arrives (clearing them here used to persist the change).
     if (this.monocleActive()) {
       // One tile holds every window, so KWin stacks them full size and the
       // layout machinery stays out of the way.
@@ -3182,6 +3174,8 @@ var Driver = class {
     this.kwinRootTile = null;
     this.tileMap = /* @__PURE__ */ new Map();
     this.hookedTiles = /* @__PURE__ */ new Set();
+    // Bound signal handlers per hooked tile, so they can be disconnected.
+    this.tileHooks = /* @__PURE__ */ new Map();
     this.windowMap = /* @__PURE__ */ new Map();
     // The tiling engine to return to when KWin's untiled mode is toggled off,
     // and its per-display settings so the switch back is lossless.
@@ -3269,18 +3263,6 @@ var Driver = class {
   }
   hasTile(kwinTile) {
     return this.tileMap.has(kwinTile);
-  }
-  getKwinRootTile() {
-    if (this.kwinRootTile !== null && this.tileMap.has(this.kwinRootTile)) {
-      return this.kwinRootTile;
-    }
-    for (const [kwinTile, engineTile] of this.tileMap) {
-      if (engineTile === this.engineRootTile) {
-        this.kwinRootTile = kwinTile;
-        return kwinTile;
-      }
-    }
-    return null;
   }
   getEngineType() {
     return this.tilingEngine.engineType;
@@ -3375,7 +3357,13 @@ var Driver = class {
     this.kwinRootTile = rootTile;
     for (const hookedTile of this.hookedTiles) {
       if (!this.tileMap.has(hookedTile)) {
+        const hooks = this.tileHooks.get(hookedTile);
+        if (hooks !== void 0) {
+          hookedTile.relativeGeometryChanged.disconnect(hooks[0]);
+          hookedTile.childTilesChanged.disconnect(hooks[1]);
+        }
         this.hookedTiles.delete(hookedTile);
+        this.tileHooks.delete(hookedTile);
       }
     }
     const invertedWindowMap = new Map(
@@ -3385,13 +3373,12 @@ var Driver = class {
     const tiledWindows = /* @__PURE__ */ new Set();
     for (const [kwinTile, engineTile] of this.tileMap) {
       if (!this.hookedTiles.has(kwinTile)) {
-        kwinTile.relativeGeometryChanged.connect(
-          this.updateTileSizesCallback.bind(this, display)
-        );
-        kwinTile.childTilesChanged.connect(
-          this.updateTileCountCallback.bind(this, display)
-        );
+        const sizeHook = this.updateTileSizesCallback.bind(this, display);
+        const countHook = this.updateTileCountCallback.bind(this, display);
+        kwinTile.relativeGeometryChanged.connect(sizeHook);
+        kwinTile.childTilesChanged.connect(countHook);
         this.hookedTiles.add(kwinTile);
+        this.tileHooks.set(kwinTile, [sizeHook, countHook]);
       }
       for (const engineWindow of engineTile.windows) {
         const kwinWindow = invertedWindowMap.get(engineWindow);
@@ -3675,6 +3662,28 @@ var Driver = class {
       rebuild: true
     });
   }
+  // Called when the display no longer exists. Disconnects tile signals so a
+  // dropped driver cannot keep firing events.
+  dispose() {
+    for (const [tile, hooks] of this.tileHooks) {
+      try {
+        tile.relativeGeometryChanged.disconnect(hooks[0]);
+        tile.childTilesChanged.disconnect(hooks[1]);
+      } catch (e) {
+        console().debug("could not disconnect tile hooks", e);
+      }
+    }
+    this.tileHooks.clear();
+    this.hookedTiles.clear();
+    this.tileMap.clear();
+    this.windowMap.clear();
+    this.invertedWindowMap.clear();
+    this.untiledWindows.clear();
+    this.draggingWindows.clear();
+    this.engineRootTile = null;
+    this.kwinRootTile = null;
+    this.display = null;
+  }
 };
 function getConfigEngineSettings(engineType) {
   if (engineType === KWIN_ENGINE_TYPE) {
@@ -3914,7 +3923,12 @@ var Controller = class {
   // The overview effect lives in the effect engine and cannot touch this
   // script, so it round-trips its window commands through the saver.
   pollRequest() {
-    this.refreshCustomLayouts();
+    // Reading the layout tabs costs a round of readConfig calls, so do it
+    // every few polls instead of every 500 ms.
+    this.pollCount = (this.pollCount ?? 0) + 1;
+    if (this.pollCount % 4 === 1) {
+      this.refreshCustomLayouts();
+    }
     this.dbusHandler?.takeRequest();
     this.dbusHandler?.pollOverviewOpen();
   }
@@ -4374,9 +4388,10 @@ var Controller = class {
     for (const display of Display.generateWindow(window)) {
       const driver = this.getDriver(display);
       if (driver === void 0) {
-        throw new Error(
+        console().warn(
           "driver not found for display " + display.toString()
         );
+        continue;
       }
       ret.push(display);
       driver.tileWindow(window);
@@ -4389,9 +4404,10 @@ var Controller = class {
     for (const display of Display.generateWindow(window)) {
       const driver = this.getDriver(display);
       if (driver === void 0) {
-        throw new Error(
+        console().warn(
           "driver not found for display " + display.toString()
         );
+        continue;
       }
       ret.push(display);
       driver.untileWindow(window);
@@ -4479,6 +4495,9 @@ var Controller = class {
         display.output,
         display.desktop
       );
+      if (rootTile == void 0) {
+        continue;
+      }
       const tile = rootTile.tiles.length == 0 ? rootTile : rootTile.pick(point);
       if (tile === null || !driver.hasTile(tile)) {
         // Dropped outside the tiles: it floats where the user left it.
@@ -4521,12 +4540,14 @@ var Controller = class {
   }
   updateDrivers() {
     const ret = [];
+    const seen = new Set();
     for (const display of Display.generate(
       this.workspace.desktops,
       this.workspace.activities,
       this.workspace.screens
     )) {
       const id = display.toSymbol();
+      seen.add(id);
       const driver = this.drivers.get(id);
       if (driver === void 0) {
         console().debug(
@@ -4538,6 +4559,15 @@ var Controller = class {
         this.drivers.set(id, driver2);
         this.dbusHandler?.getSettings(display);
         ret.push(display);
+      }
+    }
+    // Drop drivers whose desktop/activity/output no longer exists. Without
+    // this the map grows without bound as desktops and activities come and go.
+    for (const [id, driver] of this.drivers) {
+      if (!seen.has(id)) {
+        console().debug("removing driver for gone display", id);
+        driver.dispose();
+        this.drivers.delete(id);
       }
     }
     return ret;
@@ -4878,7 +4908,14 @@ function initializeController(qmlApi, qmlObjects) {
   configObj = new Config(qmlApi.kwin);
   consoleObj = new Console(qmlApi.console);
   qtObject = qmlApi.qt;
-  console().debug("config -", JSON.stringify(config()));
+  console().debug(
+    "config - rebuildDelay",
+    config().rebuildDelay,
+    "logLevel",
+    config().logLevel,
+    "useDBusSaver",
+    config().useDBusSaver
+  );
   // Bad window filters are logged after the console wrapper exists, without
   // stopping the script from loading.
   for (const err of config().regexErrors) {
