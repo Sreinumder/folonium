@@ -166,6 +166,10 @@ PlasmaCore.Dialog {
         }
         PC3.ComboBox {
             visible: root.custom && root.customLayoutSets.length > 0;
+            // Override the Plasma ComboBox's implicit size bindings, which
+            // read its own width/height through the SVG background and loop.
+            implicitWidth: 160;
+            implicitHeight: 28;
             Layout.fillWidth: true;
             model: root.customLayoutSets;
             textRole: "name";
