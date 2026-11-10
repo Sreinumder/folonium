@@ -2436,6 +2436,12 @@ var ShortcutsHandler = class {
     this.shortcuts.sendToScratchpad().activated.connect(
       this.sendToScratchpad.bind(this)
     );
+    this.shortcuts.removeFromScratchpad().activated.connect(
+      this.removeFromScratchpad.bind(this)
+    );
+    this.shortcuts.toggleScratchpadWindow().activated.connect(
+      this.toggleScratchpadWindow.bind(this)
+    );
   }
   // Returns the driver for the display in view, but only if it holds at least
   // `min` windows. Shortcuts like "rotate the split" are meaningless below that.
@@ -2490,6 +2496,24 @@ var ShortcutsHandler = class {
     if (window !== null && window !== void 0) {
       controller().sendToScratchpad(window);
     }
+  }
+  // The way back out: the active window leaves the scratchpad and returns to
+  // the current desktop. Nothing happens when it is not parked, so the same
+  // key is safe to press on any window.
+  removeFromScratchpad() {
+    const window = this.workspace.activeWindow;
+    if (window !== null && window !== void 0) {
+      controller().removeFromScratchpad(window);
+    }
+  }
+  // One key that does whichever of the two makes sense for the active window:
+  // park it, or take it back out. This is what most people will bind.
+  toggleScratchpadWindow() {
+    const window = this.workspace.activeWindow;
+    if (window === null || window === void 0) {
+      return;
+    }
+    controller().toggleScratchpadWindow(window);
   }
   // Steps the Custom engine through the shapes available for however many
   // windows are open right now.
@@ -3973,6 +3997,27 @@ var Controller = class {
       output: window.output
     });
     console().debug("scratchpad: saved", window.resourceClass, "tiled", tiled, "wantsTiled", handler?.wantsTiled);
+  }
+  // The shortcut counterpart of the overview's middle click: take a window out
+  // of the scratchpad and give it back to the desktop in view. It is a no-op
+  // for windows that were never parked.
+  removeFromScratchpad(window) {
+    if (window === null || window === void 0 || !scratchpadWindows.has(window)) {
+      return;
+    }
+    this.restoreFromScratchpad(window);
+  }
+  // Send or unsend, depending on where the window already is. `sendToScratchpad`
+  // on a parked window only hides it, so a plain toggle needs this branch.
+  toggleScratchpadWindow(window) {
+    if (window === null || window === void 0) {
+      return;
+    }
+    if (scratchpadWindows.has(window)) {
+      this.restoreFromScratchpad(window);
+      return;
+    }
+    this.sendToScratchpad(window);
   }
   sendToScratchpad(window) {
     if (window === null || window === void 0 || !isTrackableWindow(window)) {

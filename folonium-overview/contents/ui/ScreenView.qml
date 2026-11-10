@@ -2776,12 +2776,16 @@ FocusScope {
                 }
             }
             MenuItem {
-                text: "Send to scratchpad"
+                // A parked window is already in the scratchpad, so the useful
+                // action there is the way back out. Windows in the scratchpad
+                // strip get this entry through the card's own menu.
+                text: root.isScratch(root.menuWindow) ? "Remove from scratchpad" : "Send to scratchpad"
                 onClicked: {
                     const w = root.menuWindow;
                     root.closeMenu();
                     effect.deactivate();
-                    requestCall.arguments = [JSON.stringify({ t: "scratchSend", id: String(w.internalId) })];
+                    const parked = root.isScratch(w);
+                    requestCall.arguments = [JSON.stringify(parked ? { t: "scratchRemove", id: String(w.internalId) } : { t: "scratchSend", id: String(w.internalId) })];
                     requestCall.call();
                 }
             }

@@ -249,4 +249,26 @@ Item {
         text: "Folonium: Send Window to Scratchpad";
         sequence: "";
     }
+
+    function removeFromScratchpad() {
+        return removeFromScratchpadObj;
+    }
+    ShortcutHandler {
+        id: removeFromScratchpadObj;
+
+        name: "FoloniumRemoveFromScratchpad";
+        text: "Folonium: Remove Window from Scratchpad";
+        sequence: "";
+    }
+
+    function toggleScratchpadWindow() {
+        return toggleScratchpadWindowObj;
+    }
+    ShortcutHandler {
+        id: toggleScratchpadWindowObj;
+
+        name: "FoloniumToggleScratchpadWindow";
+        text: "Folonium: Send or Unsend Active Window to Scratchpad";
+        sequence: "";
+    }
 }
