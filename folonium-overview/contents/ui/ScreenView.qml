@@ -59,6 +59,10 @@ FocusScope {
     property var groups: []
     property var emptyDesktops: []
     property var desktopStates: ({})
+    // Signatures of the last assigned arrays, so a poll that changed nothing
+    // does not reassign them and re-evaluate every delegate binding.
+    property string groupsSig: ""
+    property string emptySig: ""
 
     // A window tile carries an icon and a title along its bottom edge. A window
     // shorter than that band has no room for one, and showing a tile that is
@@ -171,6 +175,7 @@ FocusScope {
         path: "/saver"
         dbusInterface: "xyz.vaughanm.folonium"
         method: "MediaAction"
+        onFailed: () => console.warn("folonium-overview: media action failed")
     }
     // The effect cannot move real windows; ask folonium to exchange these two
     // in the tiling layout and it retiles them right away.
@@ -180,6 +185,7 @@ FocusScope {
         path: "/saver"
         dbusInterface: "xyz.vaughanm.folonium"
         method: "SetRequest"
+        onFailed: () => console.warn("folonium-overview: request failed")
     }
     function requestSwap(a, b) {
         requestCall.arguments = [JSON.stringify({ t: "swap", a: String(a.internalId), b: String(b.internalId) })];
@@ -194,7 +200,7 @@ FocusScope {
         path: "/KWin"
         dbusInterface: "org.kde.KWin"
         method: "setCurrentDesktop"
-        onFailed: () => {}
+        onFailed: () => console.warn("folonium-overview: could not switch desktop")
     }
 
     // Window menu. Above/below/hide apply immediately; the rule editors are
@@ -215,18 +221,6 @@ FocusScope {
         requestCall.call();
     }
 
-    // Folonium: a desktop group's layout buttons ask the script to change that
-    // desktop, so the overview and the real desktop stay in step.
-    function layoutCommand(number, action) {
-        requestCall.arguments = [JSON.stringify({
-            t: "layout",
-            action: action,
-            desktop: number,
-            output: root.targetScreen.name
-        })];
-        requestCall.call();
-    }
-
     // Monocle desktops are put back on their tiled layout while the overview is
     // open, so every desktop shows real tiled windows instead of one full-size
     // stack. This has to survive a click overwriting the request slot, so it is
@@ -237,7 +231,7 @@ FocusScope {
         path: "/saver"
         dbusInterface: "xyz.vaughanm.folonium"
         method: "SetOverviewOpen"
-        onFailed: () => {}
+        onFailed: () => console.warn("folonium-overview: could not report open state")
     }
     function setOverviewOpen(open) {
         overviewOpenCall.arguments = [open];
@@ -255,7 +249,7 @@ FocusScope {
         dbusInterface: "xyz.vaughanm.folonium"
         method: "GetStates"
         onFinished: (returnValue) => root.parseStates(returnValue.length > 0 ? returnValue[0] : "")
-        onFailed: () => {}
+        onFailed: () => console.warn("folonium-overview: could not read layout states")
     }
     function parseStates(raw) {
         try {
@@ -269,7 +263,7 @@ FocusScope {
         id: hoverDesktopTimer
         interval: 100
         repeat: true
-        running: true
+        running: effect.activated
         onTriggered: {
             if (!effect.activated || !root.pointerMoved || root.dragActive || root.dropTargetDesktop !== null) return;
             const d = root.desktopAt(Qt.point(root.mouseX, root.mouseY));
@@ -289,7 +283,6 @@ FocusScope {
         triggeredOnStart: true
         onTriggered: {
             statesCall.call();
-            root.rebuildGroups();
             // Keep the saver's open flag fresh: it is what tells the script
             // monocle should stay off, and a stale flag is read as closed.
             root.setOverviewOpen(true);
@@ -653,8 +646,20 @@ FocusScope {
                 g.w = 0;
             }
         }
-        root.emptyDesktops = list.filter(g => !g.occupied);
-        root.groups = list;
+        const sig = list.map((g) => [
+            g.index, g.occupied, g.mono, g.count, g.x, g.y, g.w, g.h,
+            (g.monoWindows ?? []).map(w => w.internalId).join(";")
+        ].join(",")).join("|");
+        if (sig !== root.groupsSig) {
+            root.groupsSig = sig;
+            root.groups = list;
+        }
+        const empty = list.filter(g => !g.occupied);
+        const emptySignature = empty.map(g => g.index).join(",");
+        if (emptySignature !== root.emptySig) {
+            root.emptySig = emptySignature;
+            root.emptyDesktops = empty;
+        }
     }
 
     function groupFor(index) {
@@ -922,6 +927,15 @@ FocusScope {
         for (let i = 0; i < players.length; i++) {
             seen[players[i].player || players[i].app || String(i)] = true;
         }
+        // Drop cached artwork for players that are gone, so the map does not
+        // grow over a long session.
+        const keptArt = {};
+        for (const key of Object.keys(root.artCache)) {
+            if (seen[key]) {
+                keptArt[key] = root.artCache[key];
+            }
+        }
+        root.artCache = keptArt;
         // Drop cards whose player vanished, then update or append the rest.
         for (let i = mediaModel.count - 1; i >= 0; i--) {
             const existing = mediaModel.get(i);
@@ -1093,6 +1107,7 @@ FocusScope {
         path: "/saver"
         dbusInterface: "xyz.vaughanm.folonium"
         method: "WarpPointer"
+        onFailed: () => console.warn("folonium-overview: pointer warp failed")
     }
     // p is in screen coordinates: the click transposed off the tile.
     function warpPointer(p, delay) {
@@ -1462,33 +1477,6 @@ FocusScope {
         MouseArea {
             anchors.fill: parent
             onClicked: mb.clicked()
-        }
-    }
-
-    // Small icon button used by a desktop group's layout controls.
-    component LayoutButton: Item {
-        id: lb
-
-        required property string icon
-        signal clicked()
-
-        width: 17
-        height: 14
-
-        Kirigami.Icon {
-            anchors.centerIn: parent
-            width: 11
-            height: 11
-            source: lb.icon
-            color: root.panelText
-            opacity: lbHover.containsMouse ? 1 : 0.75
-        }
-
-        MouseArea {
-            id: lbHover
-            anchors.fill: parent
-            hoverEnabled: true
-            onClicked: lb.clicked()
         }
     }
 
@@ -2028,10 +2016,6 @@ FocusScope {
         }
     }
 
-    // Full-screen drag tracker: only active during drag, high z to capture all events
-    MouseArea {
-    }
-
     // Tooltip removed: window title + icon shown on hover in the tile itself
 
     ShaderEffectSource {
@@ -2330,7 +2314,7 @@ FocusScope {
                                 height: 16
 
                                 // Where the pointer is along the bar, -1 when away.
-                                readonly property real at: seekMouse.containsMouse && mediaCard.length > 0 ? Math.max(0, Math.min(1, seekMouse.mouseX / width)) : -1
+                                readonly property real at: seekMouse.containsMouse && mediaCard.length > 0 && width > 0 ? Math.max(0, Math.min(1, seekMouse.mouseX / width)) : -1
 
                                 Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
@@ -2384,7 +2368,11 @@ FocusScope {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     enabled: mediaCard.canSeek && mediaCard.length > 0
-                                    onClicked: (mouse) => root.mediaCommand(mediaCard.player, "seek", Math.round(mouse.x / width * mediaCard.length))
+                                    onClicked: (mouse) => {
+                                        if (width > 0) {
+                                            root.mediaCommand(mediaCard.player, "seek", Math.round(mouse.x / width * mediaCard.length));
+                                        }
+                                    }
                                 }
                             }
                         }

@@ -44,6 +44,7 @@ Implemented with jeepney so there is no python-dbus/C-extension dependency.
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 import threading
@@ -213,7 +214,12 @@ class Store:
                 self.data.setdefault("version", 1)
                 log(f"loaded {len(self.data['displays'])} stored display(s)")
             else:
-                log("store file had an unexpected shape, starting empty")
+                backup = self.path + ".unexpected"
+                try:
+                    os.replace(self.path, backup)
+                    log(f"store file had an unexpected shape, moved aside to {backup}")
+                except OSError:
+                    log("store file had an unexpected shape, starting empty")
         except FileNotFoundError:
             log("no store yet, starting empty")
         except (OSError, ValueError) as exc:
@@ -356,7 +362,7 @@ class Media:
     @staticmethod
     def icon_name(entry):
         """MPRIS gives the .desktop name; the icon usually lives inside it."""
-        if not entry:
+        if not entry or "/" in entry or "\\" in entry or entry in (".", ".."):
             return ""
         for base in (
             "~/.local/share/applications",
@@ -376,9 +382,11 @@ class Media:
     def snapshot(self):
         players = []
         names = self.call(DBUS_IFACE, DBUS_PATH, DBUS_IFACE, "ListNames")[0]
+        present = set()
         for name in names:
             if not name.startswith(MPRIS_PREFIX):
                 continue
+            present.add(name)
             # Chromium-style names can be on the bus while exporting nothing.
             try:
                 props = self.properties(name)
@@ -437,6 +445,10 @@ class Media:
                     "icon": self.icon_name(entry),
                 }
             )
+        # Evict artwork for players that disappeared from the bus.
+        self.art_cache = {
+            name: art for name, art in self.art_cache.items() if name in present
+        }
         # Firefox and plasma-browser-integration both publish the same track;
         # keep the copy that carries the artwork and the length.
         players.sort(
@@ -520,13 +532,17 @@ class Media:
             self.call(player, MPRIS_PATH, PLAYER_IFACE, "Seek", "x", (int(value),))
         elif action == "open":
             # Nothing of that player is on screen: hand the track to the desktop.
-            if value:
-                subprocess.Popen(
-                    ["xdg-open", value],
-                    start_new_session=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
+            # Only accept URL schemes so a player cannot pass options to xdg-open.
+            if value and value.startswith(("https://", "http://", "file://")):
+                try:
+                    subprocess.Popen(
+                        ["xdg-open", value],
+                        start_new_session=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                except OSError as exc:
+                    log(f"media: xdg-open failed: {exc!r}")
         elif action == "rate":
             self.call(
                 player,
@@ -595,13 +611,13 @@ class Saver:
             return ("s", (self.take_request(),))
         if member == "SetOverviewOpen":
             self.overview_open = args[0] is True
-            self.overview_seen = time.time()
+            self.overview_seen = time.monotonic()
             return ("", ())
         if member == "GetOverviewOpen":
             # Report a stale "open" as closed, so a crashed effect cannot leave
             # monocle switched off forever. The effect refreshes this every
             # second while it is actually open.
-            fresh = (time.time() - self.overview_seen) < OVERVIEW_STALE
+            fresh = (time.monotonic() - self.overview_seen) < OVERVIEW_STALE
             return ("b", (self.overview_open and fresh,))
         if member == "GetMedia":
             if self.media is None:
@@ -706,7 +722,11 @@ class Saver:
 
     def open_rules(self, window_id, whole_app):
         window_id = window_id.strip("{}")
-        if len(window_id) != 36:
+        if not re.fullmatch(
+            r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+            r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+            window_id,
+        ):
             log(f"open_rules got a malformed window id: {window_id!r}")
             return
         args = f"uuid {window_id}"
@@ -952,7 +972,10 @@ def main():
     reply = conn.send_and_get_reply(
         new_method_call(bus, "RequestName", "su", (SERVICE, 0x4))
     )
-    # 1 = primary owner, 4 = DBUS_NAME_FLAG_DO_NOT_QUEUE
+    # 1 = primary owner; anything else means another instance owns the name.
+    if reply.body[0] != 1:
+        log(f"RequestName -> {reply.body} (not primary owner), exiting")
+        return
     log(f"RequestName -> {reply.body} (1 = acquired)")
 
     saver = Saver(Store(STORE_PATH), media_conn)
