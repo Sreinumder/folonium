@@ -1,3 +1,2 @@
-// literal downgrade in kwin made it so every script has to have a main.js or the script refuses to install????
-
-print("Folonium INF: mfw");
+// KWin requires every script package to contain contents/code/main.js.
+// Folonium's real entry point is main.mjs, loaded by ui/main.qml.

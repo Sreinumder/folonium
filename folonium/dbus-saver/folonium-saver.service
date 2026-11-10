@@ -1,7 +1,0 @@
-[Unit]
-Description=DBus saver for Folonium
-
-[Service]
-Type=dbus
-ExecStart=folonium-saver
-BusName=xyz.vaughanm.folonium

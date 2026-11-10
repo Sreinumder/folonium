@@ -1,4 +1,0 @@
-[D-BUS Service]
-Name=xyz.vaughanm.folonium
-Exec=folonium-saver
-SystemdService=folonium-saver.service

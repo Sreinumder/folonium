@@ -5,7 +5,10 @@ Personal KWin/Plasma 6 tiling setup, version controlled in one place.
 Everything here is either source code or the installed service scripts. The
 copies KWin loads are install artifacts and live outside this repo.
 
-Fork of [Polonium](https://github.com/zeroxoneafour/polonium). Removed all the engine and replaced it with custom rules and added bunch of shortcuts, a reactive overview and a tiling saver script that persists your layout even after logoff/shutdown.
+Fork of [Polonium](https://github.com/zeroxoneafour/polonium). Removed all the
+engines and replaced them with custom rules, and added a bunch of shortcuts, a
+reactive overview and a tiling saver script that persists your layout even after
+logoff/shutdown.
 
 ## Why "Folonium"
 
@@ -56,8 +59,7 @@ needs, restarts the saver service and live-reloads the script and effect.
 
 ```sh
 cd folonium
-npm ci                      # or: npm install --no-save kwin-api@6.7.1
-make build                  # bundles src/index.ts into folonium.mjs, fills pkg/
+make build                  # copies src/index.ts into the package
 make install                # kpackagetool6 --upgrade
 ```
 

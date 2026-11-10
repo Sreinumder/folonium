@@ -1,81 +1,35 @@
-<div align="center">
-
 # folonium
 
-An autotile manager for Plasma 6.
+Rule-based autotiling for KWin 6 (Plasma 6, Wayland).
 
-An (unofficial) spiritual successor to [Bismuth](https://github.com/Bismuth-Forge/bismuth) built on KWin 6.
+A fork of [Polonium](https://github.com/zeroxoneafour/polonium), which is the
+spiritual successor to Bismuth. Folonium replaces the fixed tiling engines with
+a small layout language: you write the shapes you want for each window count,
+and the script tiles them.
 
-The descendant of [autotile](https://github.com/zeroxoneafour/kwin-autotile).
+See the repository root [`README.md`](../README.md) for the feature overview
+and [`HELP.md`](../HELP.md) for usage and configuration.
 
-![hot icon](res/logo.svg)
+## Layout
 
-[![KDE Store](https://img.shields.io/badge/KDE%20Store-Install-blue?style=for-the-badge&logo=KDE&logoColor=white&labelColor=blue)](https://store.kde.org/p/2140417)
-[![GitHub](https://img.shields.io/badge/GitHub-Source%20Code-grey?style=for-the-badge&logo=GitHub&logoColor=white&labelColor=grey)](https://github.com/zeroxoneafour/polonium)
+| Path | What it is |
+| --- | --- |
+| `src/index.ts` | The tiling script bundle. This is the code KWin runs; edit it directly. |
+| `src/qml/` | QML loaded by KWin: entry point, settings popup, shortcuts, D-Bus calls. |
+| `res/` | Package metadata, KConfig defaults, settings UI, launcher icon. |
 
-[![wayland: supported](https://img.shields.io/badge/Wayland-Ready-blue?logo=kde)](https://community.kde.org/KWin/Wayland)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://makeapullrequest.com)
+There is no per-module build step: `src/index.ts` is copied verbatim into the
+package as `contents/code/main.mjs`.
 
-</div>
+## Building
 
-## features
+Requires `zip` and `kpackagetool6`.
 
-- Works in Wayland Plasma 6.4 and up (6.7 recommended)
-- Custom moddable tiling engine backend
-- Edit tile sizes with the integrated KWin GUI
-- Move and tile windows with your mouse and keyboard
-- Set layouts independently of desktop and screen
-- DBus integration to save layouts and configurations after logging out
+```sh
+make          # build, install, clean
+make build    # build the .kwinscript package
+make install  # install into KWin
+```
 
-## fork changes
-
-This fork ([mj0x0/polonium](https://github.com/mj0x0/polonium)) is continued here as
-**Folonium** — Polonium with one letter moved, in respect for the parent script and
-as a pun. It adds, on top of upstream:
-
-- **Mouse follows focus** — the cursor warps to the newly focused window once the tiles settle (`MouseFollowsFocus`, off by default; delay and effect-ignore knobs in the config)
-- **Fullscreen keeps your layout** — fullscreen windows keep their slot in the tree and return to it, instead of restructuring the whole layout on every round trip
-- **Size memory** — windows you resize keep their size through retiles instead of snapping back to half-splits
-- **Rotate Layout** — a `Folonium: Rotate Layout` shortcut (unbound by default)
-- **Configurable tile gap** (`TileGap`) and default floating window size
-
-## x11
-
-X11 is not supported. If you encounter an issue running the script on X11, make sure it is reproducible in Wayland before submitting a bug report.
-
-## building/installing
-
-Requires `npm` and `kpackagetool6`
-
-Commands -
-
-- Build/Install/Clean - `make`
-- Build - `make build`
-- Install/Reinstall - `make install`
-- Clean build - `make clean`
-- Clean build and target - `make cleanall`
-- Build and install DBus service - `make dbus`
-
-## getting logs
-
-To get logs, do the following -
-
-- Set log level to "Log" in settings
-- Log out and log in again, and immediately reproduce the issue if possible after logging in
-- Run the below command. An explanation is provided if you are wary about running it. It only works if all of the required executables are installed.
-- `journalctl --since="$(journalctl -g "Folonium LOG: controller initialized" -n 1 --output=short-iso | cut -d ' ' -f1)" -g "[Pp]olonium" | wl-copy`
-    1. Gets the timestamp of the first controller message
-    2. Gets the journalctl log since that message
-    3. Greps for Folonium-related output
-    4. Copies the output into your clipboard
-- If you don't have `wl-copy`, remove that part from the end of the command and run it, and manually copy the output
-
-Depending on the issue, more precise logs may be needed. For these logs, set log level to "Debug" instead.
-
-## license
-
-Majority of this project is [MIT licensed](https://github.com/zeroxoneafour/polonium/blob/master/license.txt)
-
-## name
-
-Came from a comment on my old script, you can find the script and comment [here](https://store.kde.org/p/2003956)
+The repository root has an `install.sh` that installs the script, the overview
+effect, and the D-Bus saver together.

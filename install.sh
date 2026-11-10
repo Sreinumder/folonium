@@ -66,7 +66,7 @@ check_sources() {
 
 install_script() {
     local version
-    version=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$REPO/folonium/package.json" | head -n1)
+    version=$(sed -n 's/^VERSION[[:space:]]*=[[:space:]]*\([^[:space:]]*\).*/\1/p' "$REPO/folonium/Makefile" | head -n1)
     version=${version:-0.0.0}
 
     say "Installing tiling script to $SCRIPT_DIR"
@@ -79,6 +79,12 @@ install_script() {
     install -m 644 -- "$REPO/folonium/res/main.xml" "$SCRIPT_DIR/contents/config/main.xml"
     sed -e "s/%VERSION%/$version/g" -e "s/%NAME%/folonium/g" \
         "$REPO/folonium/res/metadata.json" > "$SCRIPT_DIR/metadata.json"
+}
+
+install_settings_app() {
+    say "Installing settings launcher to $SETTINGS_APP"
+    install -d -- "$(dirname -- "$SETTINGS_APP")"
+    install -m 644 -- "$REPO/folonium/res/folonium-settings.desktop" "$SETTINGS_APP"
 }
 
 install_effect() {
@@ -204,6 +210,7 @@ install_all() {
     check_sources
     migrate_from_polonium
     install_script
+    install_settings_app
     install_effect
     clear_folonium_cache
     install_saver

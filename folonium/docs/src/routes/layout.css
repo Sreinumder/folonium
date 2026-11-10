@@ -1,6 +1,0 @@
-@import "tailwindcss";
-@plugin "@tailwindcss/typography";
-@import "tailwindcss";
-@import "@skeletonlabs/skeleton";
-@import "@skeletonlabs/skeleton-svelte";
-@import "@skeletonlabs/skeleton/themes/cerberus";
