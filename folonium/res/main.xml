@@ -25,6 +25,8 @@
         <entry name="DragRetilePoint" type="int"><default>0</default></entry>
         <entry name="DragWindowSizePercent" type="int"><default>100</default></entry>
         <entry name="FloatingSpawnPoint" type="int"><default>0</default></entry>
+        <entry name="ScratchpadWidth" type="int"><default>60</default></entry>
+        <entry name="ScratchpadHeight" type="int"><default>60</default></entry>
 
         <entry name="CustomMirrorLayout" type="bool"><default>false</default></entry>
         <entry name="CustomRotateLayout" type="bool"><default>false</default></entry>

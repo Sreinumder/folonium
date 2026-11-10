@@ -58,6 +58,14 @@ FocusScope {
     // empty ones only get a numbered chip at the top.
     property var groups: []
     property var emptyDesktops: []
+    // Scratchpad membership published by the script. These windows are drawn
+    // in their own strip, never inside a desktop group.
+    property var scratchIds: []
+    property string scratchShownId: ""
+    property var scratchWindows: []
+    readonly property int scratchBand: root.scratchWindows.length > 0 ? 92 : 0
+    // Room taken by the "Scratchpad" label at the left of the strip.
+    readonly property int scratchLabelW: 82
     property var desktopStates: ({})
     // Signatures of the last assigned arrays, so a poll that changed nothing
     // does not reassign them and re-evaluate every delegate binding.
@@ -87,6 +95,8 @@ FocusScope {
     property var dragChip: null
     property bool dragActive: false
     property bool dragReturning: false
+    // The ghost came from the scratchpad strip, not from a desktop.
+    property bool dragScratch: false
     property int dragButton: Qt.NoButton
     property point dragPointer: Qt.point(0, 0)
     property point dragGrab: Qt.point(0, 0)
@@ -259,6 +269,48 @@ FocusScope {
         }
         root.rebuildGroups();
     }
+
+    // Scratchpad membership and the window currently shown, published by the
+    // script through the saver. Kept separate from the per-display state.
+    KWinComponents.DBusCall {
+        id: scratchCall
+        service: "xyz.vaughanm.folonium"
+        path: "/saver"
+        dbusInterface: "xyz.vaughanm.folonium"
+        method: "GetScratchpad"
+        onFinished: (returnValue) => root.parseScratchpad(returnValue.length > 0 ? returnValue[0] : "")
+        onFailed: () => {}
+    }
+    function parseScratchpad(raw) {
+        try {
+            const state = JSON.parse(raw);
+            root.scratchIds = Array.isArray(state.order) ? state.order.map(String) : [];
+            root.scratchShownId = state.shown ? String(state.shown) : "";
+        } catch (e) {
+            root.scratchIds = [];
+            root.scratchShownId = "";
+        }
+        root.rebuildScratch();
+        root.rebuildGroups();
+    }
+    function isScratch(window) {
+        return window !== null && window !== undefined &&
+            root.scratchIds.indexOf(String(window.internalId)) !== -1;
+    }
+    function rebuildScratch() {
+        const byId = {};
+        const stack = KWinComponents.Workspace.stackingOrder;
+        for (let i = 0; i < stack.length; i++) {
+            byId[String(stack[i].internalId)] = stack[i];
+        }
+        const list = [];
+        for (const id of root.scratchIds) {
+            if (byId[id] !== undefined) {
+                list.push(byId[id]);
+            }
+        }
+        root.scratchWindows = list;
+    }
     Timer {
         id: hoverDesktopTimer
         interval: 100
@@ -283,6 +335,7 @@ FocusScope {
         triggeredOnStart: true
         onTriggered: {
             statesCall.call();
+            scratchCall.call();
             // Keep the saver's open flag fresh: it is what tells the script
             // monocle should stay off, and a stale flag is read as closed.
             root.setOverviewOpen(true);
@@ -314,6 +367,7 @@ FocusScope {
                 root.updateCursorTarget();
                 root.dropTargetDesktop = null;
                 statesCall.call();
+                scratchCall.call();
                 root.rebuildGroups();
                 if (root.cfg.Transpose) {
                     root.transposeOpenPointer();
@@ -478,6 +532,11 @@ FocusScope {
                 if (w.onScreenDisplay || w.notification || w.criticalNotification) {
                     continue;
                 }
+                // Scratchpad windows use onAllDesktops while shown; they must
+                // not appear as a copy in every desktop group.
+                if (root.isScratch(w)) {
+                    continue;
+                }
                 if (w.pid <= 0 && w.resourceClass === "") {
                     continue;
                 }
@@ -523,7 +582,7 @@ FocusScope {
     // order and no layout can reshuffle it.
     function packGroups(occupied) {
         const availW = root.screenW - 2 * root.outerPad;
-        const availH = root.screenH - 2 * root.outerPad - root.topBand;
+        const availH = root.screenH - 2 * root.outerPad - root.topBand - root.scratchBand;
         const aspect = root.screenW / Math.max(1, root.screenH);
         const items = [];
         for (const g of occupied) {
@@ -617,7 +676,7 @@ FocusScope {
             const gridW = packed.C * packed.cells;
             const gridH = packed.rows * cellH;
             const x0 = (root.screenW - gridW) / 2;
-            const y0 = root.outerPad + root.topBand + Math.max(0, (root.screenH - 2 * root.outerPad - root.topBand - gridH) / 2);
+            const y0 = root.outerPad + root.topBand + Math.max(0, (root.screenH - 2 * root.outerPad - root.topBand - root.scratchBand - gridH) / 2);
             for (const p of packed.placements) {
                 // A couple of pixels between blocks keep neighbouring desktops
                 // from reading as one wide tile.
@@ -752,6 +811,7 @@ FocusScope {
         root.dragButton = tile.dragButton;
         root.dragReturning = false;
         root.dragActive = true;
+        root.dragScratch = tile.scratch === true;
         root.dragTile = tile;
         root.updateDropTarget();
     }
@@ -766,6 +826,7 @@ FocusScope {
     function clearDrag() {
         root.dragActive = false;
         root.dragReturning = false;
+        root.dragScratch = false;
         root.dragTile = null;
         root.clearDropHover();
     }
@@ -820,6 +881,31 @@ FocusScope {
         const dx = root.dragPointer.x - tile.pressPointer.x;
         const dy = root.dragPointer.y - tile.pressPointer.y;
         const floating = w.tile === null;
+
+        // A scratchpad card dropped on empty space stays parked; on a desktop
+        // it leaves the scratchpad and becomes a normal window there.
+        if (root.dragScratch) {
+            if (target === null) {
+                root.returnGhost(tile);
+                return;
+            }
+            root.scratchIds = root.scratchIds.filter(id => id !== String(w.internalId));
+            if (root.scratchShownId === String(w.internalId)) {
+                root.scratchShownId = "";
+            }
+            root.rebuildScratch();
+            root.rebuildGroups();
+            requestCall.arguments = [JSON.stringify({
+                t: "scratchToDesktop",
+                id: String(w.internalId),
+                desktop: String(target.id),
+                number: target.x11DesktopNumber
+            })];
+            requestCall.call();
+            root.switchAfterDrop(root.currentDesktop, target);
+            root.clearDrag();
+            return;
+        }
 
         // Outside every group and chip
         if (target === null) {
@@ -1531,6 +1617,153 @@ FocusScope {
         }
     }
 
+    // A card in the scratchpad strip. It pretends to be a WindowTile for the
+    // shared drag code: same `window`, size, press pointer, drag button and
+    // `scratch` flag. Dropping it on a desktop moves it out of the scratchpad.
+    component ScratchpadCard: Item {
+        id: sc
+
+        required property QtObject window
+
+        readonly property string id: String(window.internalId)
+        readonly property bool shownNow: root.scratchShownId === sc.id
+        readonly property bool scratch: true
+        // beginDrag/finishDrag read these from a tile.
+        readonly property var tile: ({ desktop: root.currentDesktop, scale: 1, monoLayout: false })
+        readonly property real cardWidth: Math.min(170, Math.max(48,
+            (root.screenW - 2 * root.outerPad - root.scratchLabelW - root.groupGap -
+             (root.scratchWindows.length - 1) * root.groupGap) /
+            Math.max(1, root.scratchWindows.length)))
+
+        property bool dragged: false
+        property int dragButton: Qt.NoButton
+        property point pressPointer: Qt.point(0, 0)
+        property point pressGrab: Qt.point(0, 0)
+
+        width: cardWidth
+        height: Math.min(76, Math.max(44, Math.round(width * root.screenH / Math.max(1, root.screenW))))
+
+        Rectangle {
+            anchors.fill: parent
+            color: root.alpha(root.windowColor, 0.9)
+            border.width: sc.shownNow ? 3 : 2
+            border.color: sc.shownNow ? root.accentColor : root.alpha(root.accentColor, 0.45)
+        }
+
+        SharpThumbnail {
+            anchors.fill: parent
+            window: sc.window
+            radius: 0
+            visible: !sc.window.minimized
+        }
+
+        Kirigami.Icon {
+            anchors.centerIn: parent
+            width: Math.round(Math.min(sc.width, sc.height) * 0.42)
+            height: width
+            source: sc.window.icon
+            visible: sc.window.minimized
+            opacity: 0.8
+        }
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: Math.min(22, sc.height)
+            color: root.alpha(root.panelColor, 0.9)
+
+            Row {
+                anchors.fill: parent
+                anchors.leftMargin: 5
+                anchors.rightMargin: 5
+                spacing: 4
+
+                Kirigami.Icon {
+                    width: 14
+                    height: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    source: sc.window.icon
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.max(1, parent.width - 18)
+                    text: sc.window.caption
+                    color: root.panelText
+                    font.pixelSize: 10
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideRight
+                }
+            }
+        }
+
+        MouseArea {
+            id: scratchArea
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+            propagateComposedEvents: false
+            onPressed: (mouse) => {
+                sc.dragButton = mouse.button;
+                sc.dragged = false;
+                const p = sc.mapToItem(root, mouse.x, mouse.y);
+                sc.pressPointer = p;
+                const o = sc.mapToItem(root, 0, 0);
+                sc.pressGrab = Qt.point(p.x - o.x, p.y - o.y);
+            }
+            onPositionChanged: (mouse) => {
+                const p = sc.mapToItem(root, mouse.x, mouse.y);
+                root.mouseX = p.x;
+                root.mouseY = p.y;
+                root.pointerMoved = true;
+                if (!(mouse.buttons & Qt.LeftButton)) {
+                    return;
+                }
+                if (!root.dragActive && !sc.dragged) {
+                    if (Math.abs(p.x - sc.pressPointer.x) < 5 && Math.abs(p.y - sc.pressPointer.y) < 5) {
+                        return;
+                    }
+                    sc.dragged = true;
+                    root.beginDrag(sc, p, sc.pressGrab);
+                    return;
+                }
+                if (root.dragTile === sc) {
+                    root.dragPointer = p;
+                    root.updateDropTarget();
+                }
+            }
+            onReleased: (mouse) => {
+                if (root.dragTile === sc) {
+                    root.dragPointer = sc.mapToItem(root, mouse.x, mouse.y);
+                    root.finishDrag(sc);
+                }
+            }
+            onClicked: (mouse) => {
+                if (sc.dragged) {
+                    mouse.accepted = true;
+                    return;
+                }
+                if (mouse.button === Qt.LeftButton) {
+                    // Show it on the current desktop and close the overview.
+                    root.scratchShownId = sc.id;
+                    requestCall.arguments = [JSON.stringify({ t: "scratchShow", id: sc.id })];
+                    requestCall.call();
+                    effect.deactivate();
+                } else if (mouse.button === Qt.MiddleButton) {
+                    // Put it back on the current desktop.
+                    root.scratchIds = root.scratchIds.filter(id => id !== sc.id);
+                    if (root.scratchShownId === sc.id) {
+                        root.scratchShownId = "";
+                    }
+                    root.rebuildScratch();
+                    root.rebuildGroups();
+                    requestCall.arguments = [JSON.stringify({ t: "scratchRemove", id: sc.id })];
+                    requestCall.call();
+                }
+            }
+        }
+    }
+
     component WindowTile: Item {
         id: win
 
@@ -1539,6 +1772,8 @@ FocusScope {
 
         readonly property real s: tile.scale
         readonly property bool mini: window.minimized
+        // Scratchpad windows live in the bottom strip, not in a desktop.
+        readonly property bool scratch: root.isScratch(window)
         readonly property int slot: mini ? tile.minimizedItems.findIndex(t => String(t.window.internalId) === String(window.internalId)) : -1
         readonly property real chip: tile.chipSize
 
@@ -1577,7 +1812,7 @@ FocusScope {
         property point pressPointer: Qt.point(0, 0)
         property point pressGrab: Qt.point(0, 0)
 
-        visible: shown
+        visible: shown && !scratch
         clip: true
         // minimized chips sit above everything so they stay reachable
         z: dragging ? 100000 : (mini ? 20000 + slot : window.stackingOrder)
@@ -1773,7 +2008,7 @@ FocusScope {
             const items = [];
             for (let i = 0; i < windows.count; i++) {
                 const item = windows.itemAt(i);
-                if (item && item.shown && item.window.minimized) {
+                if (item && item.shown && !item.scratch && item.window.minimized) {
                     items.push(item);
                 }
             }
@@ -1789,7 +2024,7 @@ FocusScope {
             let found = null;
             for (let i = 0; i < windows.count; i++) {
                 const item = windows.itemAt(i);
-                if (!item || item === ignore || !item.shown || item.window.minimized) {
+                if (!item || item === ignore || !item.shown || item.scratch || item.window.minimized) {
                     continue;
                 }
                 const p = item.mapFromItem(desktopTile, x, y);
@@ -1966,7 +2201,7 @@ FocusScope {
                 width: window.width
                 height: window.height
                 z: window.stackingOrder
-                visible: !window.hidden
+                visible: !window.hidden && !root.isScratch(window)
             }
         }
     }
@@ -2423,6 +2658,57 @@ FocusScope {
                 }
             }
         }
+
+        // Scratchpad strip along the bottom edge. These windows are not on any
+        // desktop: left click shows one, middle click puts it back, drag moves
+        // it out to a desktop. The packer reserves scratchBand above it.
+        Item {
+            id: scratchStrip
+            visible: root.scratchWindows.length > 0
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: root.outerPad
+            anchors.rightMargin: root.outerPad
+            anchors.bottomMargin: root.outerPad
+            height: root.scratchBand - root.outerPad
+            clip: true
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 1
+                color: Qt.rgba(1, 1, 1, 0.18)
+            }
+
+            Text {
+                id: scratchLabel
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: root.scratchLabelW
+                text: "Scratchpad"
+                color: root.alpha(root.panelText, 0.75)
+                font.pixelSize: 11
+                font.weight: Font.DemiBold
+            }
+
+            Row {
+                id: scratchRow
+                anchors.left: scratchLabel.right
+                anchors.leftMargin: root.groupGap
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: root.groupGap
+
+                Repeater {
+                    model: root.scratchWindows
+                    delegate: ScratchpadCard {
+                        window: modelData
+                    }
+                }
+            }
+        }
     }
 
     // Right-click window menu, drawn over the overview.
@@ -2487,6 +2773,16 @@ FocusScope {
                     const w = root.menuWindow;
                     w.excludeFromCapture = !w.excludeFromCapture;
                     root.closeMenu();
+                }
+            }
+            MenuItem {
+                text: "Send to scratchpad"
+                onClicked: {
+                    const w = root.menuWindow;
+                    root.closeMenu();
+                    effect.deactivate();
+                    requestCall.arguments = [JSON.stringify({ t: "scratchSend", id: String(w.internalId) })];
+                    requestCall.call();
                 }
             }
             MenuItem { separator: true }

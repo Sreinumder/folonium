@@ -571,6 +571,9 @@ class Saver:
         self.state = {}
         # One pending command from the overview effect to the script.
         self.request = ""
+        # Scratchpad membership and the window currently shown, published by
+        # the script for the overview and kept across a script reload.
+        self.scratchpad = ""
         # Whether the overview effect is open. Kept apart from the one-slot
         # request queue: a click can overwrite that, but this flag has to
         # survive so monocle can be put back when the overview closes.
@@ -604,6 +607,11 @@ class Saver:
             return ("s", (self.get_state(args[0]),))
         if member == "GetStates":
             return ("s", (json.dumps(self.state),))
+        if member == "SetScratchpad":
+            self.set_scratchpad(args[0])
+            return ("", ())
+        if member == "GetScratchpad":
+            return ("s", (self.scratchpad,))
         if member == "SetRequest":
             self.set_request(args[0])
             return ("", ())
@@ -747,6 +755,20 @@ class Saver:
             return ""
         return self.state.get(display_key, "")
 
+    def set_scratchpad(self, state_json):
+        if not isinstance(state_json, str) or len(state_json) > STATE_LIMIT:
+            log("SetScratchpad got an oversized or non-string state, ignoring")
+            return
+        try:
+            state = json.loads(state_json)
+        except (ValueError, TypeError):
+            log(f"SetScratchpad got unparseable JSON, ignoring: {state_json!r}")
+            return
+        if not isinstance(state, dict) or not isinstance(state.get("order"), list):
+            log(f"SetScratchpad got a malformed state, ignoring: {state!r}")
+            return
+        self.scratchpad = state_json
+
     def set_global_setting(self, key, value):
         kind = GLOBAL_KEYS.get(key)
         if kind is None:
@@ -859,6 +881,12 @@ INTROSPECTION_XML = (
     "    </method>\n"
     '    <method name="GetStates">\n'
     '      <arg name="states_json" type="s" direction="out"/>\n'
+    "    </method>\n"
+    '    <method name="SetScratchpad">\n'
+    '      <arg name="state_json" type="s" direction="in"/>\n'
+    "    </method>\n"
+    '    <method name="GetScratchpad">\n'
+    '      <arg name="state_json" type="s" direction="out"/>\n'
     "    </method>\n"
     '    <method name="SetRequest">\n'
     '      <arg name="request_json" type="s" direction="in"/>\n'

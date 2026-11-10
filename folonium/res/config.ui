@@ -26,7 +26,7 @@
          <string>General</string>
         </attribute>
         <layout class="QGridLayout" name="gridLayout_10">
-         <item row="9" column="2" colspan="2">
+         <item row="10" column="2" colspan="2">
           <spacer name="generalSpacer">
            <property name="orientation">
             <enum>Qt::Orientation::Vertical</enum>
@@ -163,6 +163,52 @@
            </property>
            <property name="value">
             <number>10</number>
+           </property>
+          </widget>
+         </item>
+         <item row="8" column="2">
+          <widget class="QLabel" name="scratchpadWidthLabel">
+           <property name="text">
+            <string>Scratchpad Width</string>
+           </property>
+          </widget>
+         </item>
+         <item row="8" column="3">
+          <widget class="QSpinBox" name="kcfg_ScratchpadWidth">
+           <property name="suffix">
+            <string>%</string>
+           </property>
+           <property name="minimum">
+            <number>20</number>
+           </property>
+           <property name="maximum">
+            <number>100</number>
+           </property>
+           <property name="value">
+            <number>60</number>
+           </property>
+          </widget>
+         </item>
+         <item row="9" column="2">
+          <widget class="QLabel" name="scratchpadHeightLabel">
+           <property name="text">
+            <string>Scratchpad Height</string>
+           </property>
+          </widget>
+         </item>
+         <item row="9" column="3">
+          <widget class="QSpinBox" name="kcfg_ScratchpadHeight">
+           <property name="suffix">
+            <string>%</string>
+           </property>
+           <property name="minimum">
+            <number>20</number>
+           </property>
+           <property name="maximum">
+            <number>100</number>
+           </property>
+           <property name="value">
+            <number>60</number>
            </property>
           </widget>
          </item>

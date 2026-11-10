@@ -227,4 +227,26 @@ Item {
         text: "Folonium: Toggle Settings Menu";
         sequence: "";
     }
+
+    function toggleScratchpad() {
+        return toggleScratchpadObj;
+    }
+    ShortcutHandler {
+        id: toggleScratchpadObj;
+
+        name: "FoloniumToggleScratchpad";
+        text: "Folonium: Toggle Scratchpad";
+        sequence: "";
+    }
+
+    function sendToScratchpad() {
+        return sendToScratchpadObj;
+    }
+    ShortcutHandler {
+        id: sendToScratchpadObj;
+
+        name: "FoloniumSendToScratchpad";
+        text: "Folonium: Send Window to Scratchpad";
+        sequence: "";
+    }
 }

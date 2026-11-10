@@ -79,6 +79,32 @@ Item {
         method: "TakeRequest";
     }
 
+    // Scratchpad membership and the currently shown window. Volatile, but it
+    // survives a script reload so parked windows can be recovered.
+    function getScratchpad() {
+        return getScratchpadObj;
+    }
+    DBusCall {
+        id: getScratchpadObj;
+
+        service: "xyz.vaughanm.folonium";
+        path: "/saver";
+        dbusInterface: "xyz.vaughanm.folonium";
+        method: "GetScratchpad";
+    }
+
+    function setScratchpad() {
+        return setScratchpadObj;
+    }
+    DBusCall {
+        id: setScratchpadObj;
+
+        service: "xyz.vaughanm.folonium";
+        path: "/saver";
+        dbusInterface: "xyz.vaughanm.folonium";
+        method: "SetScratchpad";
+    }
+
     // Whether the overview effect is open, polled by the script. The one-slot
     // request queue can be overwritten by a click, so this flag is what tells
     // the script when to put monocle back.
