@@ -105,6 +105,21 @@ Item {
         method: "SetScratchpad";
     }
 
+    // Registers this script instance as the newest one. TakeRequest only
+    // answers a caller that presents this epoch, so instances left over from
+    // a reload stop handling requests instead of acting on stale state.
+    function claimScriptEpoch() {
+        return claimScriptEpochObj;
+    }
+    DBusCall {
+        id: claimScriptEpochObj;
+
+        service: "xyz.vaughanm.folonium";
+        path: "/saver";
+        dbusInterface: "xyz.vaughanm.folonium";
+        method: "ClaimScriptEpoch";
+    }
+
     // Whether the overview effect is open, polled by the script. The one-slot
     // request queue can be overwritten by a click, so this flag is what tells
     // the script when to put monocle back.

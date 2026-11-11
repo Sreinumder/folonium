@@ -228,6 +228,17 @@ Item {
         sequence: "";
     }
 
+    function cycleScratchpad() {
+        return cycleScratchpadObj;
+    }
+    ShortcutHandler {
+        id: cycleScratchpadObj;
+
+        name: "FoloniumCycleScratchpad";
+        text: "Folonium: Cycle Scratchpad Windows";
+        sequence: "";
+    }
+
     function toggleScratchpad() {
         return toggleScratchpadObj;
     }
@@ -239,28 +250,6 @@ Item {
         sequence: "";
     }
 
-    function sendToScratchpad() {
-        return sendToScratchpadObj;
-    }
-    ShortcutHandler {
-        id: sendToScratchpadObj;
-
-        name: "FoloniumSendToScratchpad";
-        text: "Folonium: Send Window to Scratchpad";
-        sequence: "";
-    }
-
-    function removeFromScratchpad() {
-        return removeFromScratchpadObj;
-    }
-    ShortcutHandler {
-        id: removeFromScratchpadObj;
-
-        name: "FoloniumRemoveFromScratchpad";
-        text: "Folonium: Remove Window from Scratchpad";
-        sequence: "";
-    }
-
     function toggleScratchpadWindow() {
         return toggleScratchpadWindowObj;
     }
@@ -269,6 +258,17 @@ Item {
 
         name: "FoloniumToggleScratchpadWindow";
         text: "Folonium: Send or Unsend Active Window to Scratchpad";
+        sequence: "";
+    }
+
+    function cloneToScratchpad() {
+        return cloneToScratchpadObj;
+    }
+    ShortcutHandler {
+        id: cloneToScratchpadObj;
+
+        name: "FoloniumCloneToScratchpad";
+        text: "Folonium: Clone Active Window to Scratchpad";
         sequence: "";
     }
 }

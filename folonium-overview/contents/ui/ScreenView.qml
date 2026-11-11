@@ -63,6 +63,8 @@ FocusScope {
     property var scratchIds: []
     property string scratchShownId: ""
     property var scratchWindows: []
+    // Scratchpad windows that also stay tiled on their own desktop.
+    property var scratchCloneIds: []
     readonly property int scratchBand: root.scratchWindows.length > 0 ? 92 : 0
     // Room taken by the "Scratchpad" label at the left of the strip.
     readonly property int scratchLabelW: 82
@@ -286,9 +288,11 @@ FocusScope {
             const state = JSON.parse(raw);
             root.scratchIds = Array.isArray(state.order) ? state.order.map(String) : [];
             root.scratchShownId = state.shown ? String(state.shown) : "";
+            root.scratchCloneIds = Array.isArray(state.clones) ? state.clones.map(String) : [];
         } catch (e) {
             root.scratchIds = [];
             root.scratchShownId = "";
+            root.scratchCloneIds = [];
         }
         root.rebuildScratch();
         root.rebuildGroups();
@@ -296,6 +300,11 @@ FocusScope {
     function isScratch(window) {
         return window !== null && window !== undefined &&
             root.scratchIds.indexOf(String(window.internalId)) !== -1;
+    }
+    // A clone is parked and still tiled on a desktop, so it keeps its tile.
+    function isScratchClone(window) {
+        return window !== null && window !== undefined &&
+            root.scratchCloneIds.indexOf(String(window.internalId)) !== -1;
     }
     function rebuildScratch() {
         const byId = {};
@@ -533,8 +542,13 @@ FocusScope {
                     continue;
                 }
                 // Scratchpad windows use onAllDesktops while shown; they must
-                // not appear as a copy in every desktop group.
-                if (root.isScratch(w)) {
+                // not appear as a copy in every desktop group. A clone keeps
+                // its place on the one desktop it really lives on.
+                if (root.isScratch(w) && !root.isScratchClone(w)) {
+                    continue;
+                }
+                if (root.isScratchClone(w) && (w.desktops.length !== 1 || w.desktops[0] === undefined ||
+                    w.desktops[0].x11DesktopNumber !== d.x11DesktopNumber)) {
                     continue;
                 }
                 if (w.pid <= 0 && w.resourceClass === "") {
@@ -890,6 +904,7 @@ FocusScope {
                 return;
             }
             root.scratchIds = root.scratchIds.filter(id => id !== String(w.internalId));
+            root.scratchCloneIds = root.scratchCloneIds.filter(id => id !== String(w.internalId));
             if (root.scratchShownId === String(w.internalId)) {
                 root.scratchShownId = "";
             }
@@ -1627,6 +1642,7 @@ FocusScope {
 
         readonly property string id: String(window.internalId)
         readonly property bool shownNow: root.scratchShownId === sc.id
+        readonly property bool cloned: root.scratchCloneIds.indexOf(sc.id) !== -1
         readonly property bool scratch: true
         // beginDrag/finishDrag read these from a tile.
         readonly property var tile: ({ desktop: root.currentDesktop, scale: 1, monoLayout: false })
@@ -1640,8 +1656,10 @@ FocusScope {
         property point pressPointer: Qt.point(0, 0)
         property point pressGrab: Qt.point(0, 0)
 
+        readonly property int scTitleBand: 24
+
         width: cardWidth
-        height: Math.min(76, Math.max(44, Math.round(width * root.screenH / Math.max(1, root.screenW))))
+        height: Math.min(76, Math.max(48, Math.round(width * root.screenH / Math.max(1, root.screenW))))
 
         Rectangle {
             anchors.fill: parent
@@ -1650,50 +1668,53 @@ FocusScope {
             border.color: sc.shownNow ? root.accentColor : root.alpha(root.accentColor, 0.45)
         }
 
-        SharpThumbnail {
-            anchors.fill: parent
-            window: sc.window
-            radius: 0
-            visible: !sc.window.minimized
-        }
-
+        // No preview here: a parked window is minimized, so a live thumbnail
+        // would show a stale frame. An icon and the title say enough.
         Kirigami.Icon {
-            anchors.centerIn: parent
-            width: Math.round(Math.min(sc.width, sc.height) * 0.42)
+            id: scIcon
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: Math.round((sc.height - scTitleBand) / 2 - height / 2)
+            width: Math.round(Math.min(sc.width * 0.5, (sc.height - scTitleBand) * 0.72))
             height: width
             source: sc.window.icon
-            visible: sc.window.minimized
-            opacity: 0.8
+            opacity: sc.shownNow ? 1 : 0.85
         }
 
         Rectangle {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            height: Math.min(22, sc.height)
-            color: root.alpha(root.panelColor, 0.9)
+            height: sc.scTitleBand
+            color: root.alpha(root.panelColor, 0.55)
+        }
 
-            Row {
-                anchors.fill: parent
-                anchors.leftMargin: 5
-                anchors.rightMargin: 5
-                spacing: 4
+        Row {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: 5
+            anchors.rightMargin: 5
+            height: scTitleBand
+            spacing: 4
 
-                Kirigami.Icon {
-                    width: 14
-                    height: 14
-                    anchors.verticalCenter: parent.verticalCenter
-                    source: sc.window.icon
-                }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.max(1, parent.width - 18)
-                    text: sc.window.caption
-                    color: root.panelText
-                    font.pixelSize: 10
-                    font.weight: Font.DemiBold
-                    elide: Text.ElideRight
-                }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(1, parent.width - (scCloneBadge.visible ? scCloneBadge.width + 4 : 0))
+                text: sc.window.caption
+                color: root.panelText
+                font.pixelSize: 10
+                font.weight: sc.shownNow ? Font.Bold : Font.DemiBold
+                elide: Text.ElideRight
+            }
+            Kirigami.Icon {
+                id: scCloneBadge
+                anchors.verticalCenter: parent.verticalCenter
+                width: 12
+                height: 12
+                // A clone lives on its desktop as well as in the scratchpad.
+                source: "edit-copy"
+                visible: sc.cloned
+                opacity: 0.7
             }
         }
 
@@ -1745,19 +1766,28 @@ FocusScope {
                 }
                 if (mouse.button === Qt.LeftButton) {
                     // Show it on the current desktop and close the overview.
+                    // A clone that already lives on this desktop is simply
+                    // activated by the controller.
                     root.scratchShownId = sc.id;
                     requestCall.arguments = [JSON.stringify({ t: "scratchShow", id: sc.id })];
                     requestCall.call();
                     effect.deactivate();
                 } else if (mouse.button === Qt.MiddleButton) {
-                    // Put it back on the current desktop.
+                    // Put it back on the current desktop (for a clone that
+                    // means moving it here, not just unsharing it).
                     root.scratchIds = root.scratchIds.filter(id => id !== sc.id);
+                    root.scratchCloneIds = root.scratchCloneIds.filter(id => id !== sc.id);
                     if (root.scratchShownId === sc.id) {
                         root.scratchShownId = "";
                     }
                     root.rebuildScratch();
                     root.rebuildGroups();
-                    requestCall.arguments = [JSON.stringify({ t: "scratchRemove", id: sc.id })];
+                    requestCall.arguments = [JSON.stringify({
+                        t: "scratchToDesktop",
+                        id: sc.id,
+                        desktop: String(root.currentDesktop.id),
+                        number: root.currentDesktop.x11DesktopNumber
+                    })];
                     requestCall.call();
                 }
             }
@@ -1773,7 +1803,8 @@ FocusScope {
         readonly property real s: tile.scale
         readonly property bool mini: window.minimized
         // Scratchpad windows live in the bottom strip, not in a desktop.
-        readonly property bool scratch: root.isScratch(window)
+        // Clones are in both: the strip and their own desktop's layout.
+        readonly property bool scratch: root.isScratch(window) && !root.isScratchClone(window)
         readonly property int slot: mini ? tile.minimizedItems.findIndex(t => String(t.window.internalId) === String(window.internalId)) : -1
         readonly property real chip: tile.chipSize
 
@@ -1880,9 +1911,18 @@ FocusScope {
                     source: "view-hidden"
                     visible: win.window.excludeFromCapture
                 }
+                // A clone is tiled here and also listed in the scratchpad.
+                Kirigami.Icon {
+                    width: root.tileTitleIcon
+                    height: root.tileTitleIcon
+                    anchors.verticalCenter: parent.verticalCenter
+                    source: "edit-copy"
+                    opacity: 0.8
+                    visible: root.isScratchClone(win.window)
+                }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.max(1, parent.width - root.tileTitleIcon - root.tileTitlePad - (win.window.excludeFromCapture ? root.tileTitleIcon + root.tileTitlePad : 0))
+                    width: Math.max(1, parent.width - root.tileTitleIcon - root.tileTitlePad - (win.window.excludeFromCapture ? root.tileTitleIcon + root.tileTitlePad : 0) - (root.isScratchClone(win.window) ? root.tileTitleIcon + root.tileTitlePad : 0))
                     text: win.window.caption
                     color: root.panelText
                     font.pixelSize: root.tileTitleFont
@@ -2201,7 +2241,7 @@ FocusScope {
                 width: window.width
                 height: window.height
                 z: window.stackingOrder
-                visible: !window.hidden && !root.isScratch(window)
+                visible: !window.hidden && (!root.isScratch(window) || root.isScratchClone(window))
             }
         }
     }
@@ -2777,8 +2817,8 @@ FocusScope {
             }
             MenuItem {
                 // A parked window is already in the scratchpad, so the useful
-                // action there is the way back out. Windows in the scratchpad
-                // strip get this entry through the card's own menu.
+                // action there is the way back out. Scratch cards have no
+                // right-click menu of their own.
                 text: root.isScratch(root.menuWindow) ? "Remove from scratchpad" : "Send to scratchpad"
                 onClicked: {
                     const w = root.menuWindow;
@@ -2786,6 +2826,18 @@ FocusScope {
                     effect.deactivate();
                     const parked = root.isScratch(w);
                     requestCall.arguments = [JSON.stringify(parked ? { t: "scratchRemove", id: String(w.internalId) } : { t: "scratchSend", id: String(w.internalId) })];
+                    requestCall.call();
+                }
+            }
+            MenuItem {
+                // Sharing instead of parking: the window stays tiled on this
+                // desktop and also shows up in the scratchpad for the others.
+                visible: root.menuWindow !== null && !root.isScratch(root.menuWindow)
+                text: "Clone to scratchpad (keep on desktop)"
+                onClicked: {
+                    const w = root.menuWindow;
+                    root.closeMenu();
+                    requestCall.arguments = [JSON.stringify({ t: "scratchClone", id: String(w.internalId) })];
                     requestCall.call();
                 }
             }

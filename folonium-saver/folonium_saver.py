@@ -574,6 +574,11 @@ class Saver:
         # Scratchpad membership and the window currently shown, published by
         # the script for the overview and kept across a script reload.
         self.scratchpad = ""
+        # Timestamp of the script instance that owns the request stream. It is
+        # used as the epoch token itself: unlike a counter reset on every saver
+        # restart, a timestamp still orders instances correctly after one, so a
+        # stale instance from the previous saver cannot match the new owner.
+        self.script_start = 0
         # Whether the overview effect is open. Kept apart from the one-slot
         # request queue: a click can overwrite that, but this flag has to
         # survive so monocle can be put back when the overview closes.
@@ -616,7 +621,33 @@ class Saver:
             self.set_request(args[0])
             return ("", ())
         if member == "TakeRequest":
-            return ("s", (self.take_request(),))
+            # Only the instance that claimed the stream gets to take requests;
+            # instances left over from a reload call with an older start time
+            # and get nothing, so they can neither steal requests nor act on
+            # them with outdated state. The owner timestamp is returned too,
+            # which lets a live instance notice that the saver restarted
+            # underneath it and claim again.
+            try:
+                expected = int(args[0])
+            except (IndexError, TypeError, ValueError):
+                expected = 0
+            if self.script_start == 0 or expected != self.script_start:
+                return ("sx", ("", self.script_start))
+            return ("sx", (self.take_request(), self.script_start))
+        if member == "ClaimScriptEpoch":
+            # Claims are ordered by the instance's start time, not by who calls
+            # last: a stale instance left over from an old reload has an older
+            # timestamp and cannot take the stream back from the live one.
+            # A claim with no usable start (an instance that predates this
+            # protocol) is always rejected.
+            try:
+                start = int(args[0])
+            except (IndexError, TypeError, ValueError):
+                start = 0
+            if start > 0 and start >= self.script_start:
+                self.script_start = start
+                return ("x", (start,))
+            return ("x", (-1,))
         if member == "SetOverviewOpen":
             self.overview_open = args[0] is True
             self.overview_seen = time.monotonic()
@@ -892,7 +923,13 @@ INTROSPECTION_XML = (
     '      <arg name="request_json" type="s" direction="in"/>\n'
     "    </method>\n"
     '    <method name="TakeRequest">\n'
+    '      <arg name="script_epoch" type="x" direction="in"/>\n'
     '      <arg name="request_json" type="s" direction="out"/>\n'
+    '      <arg name="current_epoch" type="x" direction="out"/>\n'
+    "    </method>\n"
+    '    <method name="ClaimScriptEpoch">\n'
+    '      <arg name="instance_start" type="x" direction="in"/>\n'
+    '      <arg name="script_epoch" type="x" direction="out"/>\n'
     "    </method>\n"
     '    <method name="SetOverviewOpen">\n'
     '      <arg name="open" type="b" direction="in"/>\n'

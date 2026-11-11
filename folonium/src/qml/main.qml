@@ -33,14 +33,17 @@ Item {
             "console": console,
             "qt": Qt,
         };
+        // Hand the Loaders over rather than their items: the items can still
+        // be pending while Component.onCompleted runs, and each handler waits
+        // for its Loader to become ready instead of wiring a null object.
         const qmlObjects = {
             "root": root,
             "eventTimer": eventTimer,
             "mffTimer": mffTimer,
             "requestTimer": requestTimer,
-            "shortcuts": shortcutsLoader.item,
-            "settings": settingsLoader.item,
-            "dbus": dbusLoader.item,
+            "shortcuts": shortcutsLoader,
+            "settings": settingsLoader,
+            "dbus": dbusLoader,
         };
         Folonium.main(api, qmlObjects);
     }

@@ -12,8 +12,30 @@ var MIN_CHILD_FRACTION = 0.15001;
 // A window is either tiled/floating on its desktop or in the scratchpad, never
 // both: the scratchpad is a mode, not a second desktop.
 var scratchpadWindows = /* @__PURE__ */ new Set();
+// The one controller instance. Declared at the top so module-level helpers
+// (isScratchpadOwned) can read it without a use-before-declaration warning.
+var controllerObj;
+// Windows that live in the scratchpad and on a desktop at the same time (see
+// Controller.cloneToScratchpad). They stay in the tiling layout of that
+// desktop, so every layout path must treat them as ordinary windows.
+var scratchpadClonedWindows = /* @__PURE__ */ new Set();
 function isScratchpadWindow(window) {
   return window !== null && window !== void 0 && scratchpadWindows.has(window);
+}
+function isScratchpadCloned(window) {
+  return window !== null && window !== void 0 && scratchpadClonedWindows.has(window);
+}
+// True while the scratchpad owns the window's visibility and every layout path
+// must ignore it: parked windows always, clones only while one is shown above
+// the desktops. An idle clone is an ordinary tiled window on its desktop.
+function isScratchpadOwned(window) {
+  if (!isScratchpadWindow(window)) {
+    return false;
+  }
+  if (isScratchpadCloned(window)) {
+    return controllerObj !== null && controllerObj !== void 0 && controllerObj.scratchpadShown === window;
+  }
+  return true;
 }
 function rotateDirection(d) {
   let ret = 0 /* None */;
@@ -226,10 +248,12 @@ var Display = class _Display {
     if (window === null || window === void 0) {
       return;
     }
-    // A scratchpad window is not on any desktop's layout, even while it is
-    // shown on all desktops. Excluding it here keeps every caller (new window,
-    // update, delete, activation, drag, overview state) consistent.
-    if (isScratchpadWindow(window)) {
+    // A window the scratchpad owns the visibility of is not on any desktop's
+    // layout, even while it is shown on all desktops. Excluding it here keeps
+    // every caller (new window, update, delete, activation, drag, overview
+    // state) consistent. Clones count as owned only while they are shown; an
+    // idle clone is a proud member of its desktop.
+    if (isScratchpadOwned(window)) {
       return;
     }
     let output, onAllDesktops, desktops, activities;
@@ -1826,7 +1850,7 @@ var WindowHandler = class {
     if (!isTrackableWindow(this.window)) {
       return false;
     }
-    if (isScratchpadWindow(this.window)) {
+    if (isScratchpadOwned(this.window)) {
       return false;
     }
     if (!this.canBeTiled()) {
@@ -1885,7 +1909,9 @@ var WindowHandler = class {
   }
   minimizedChanged() {
     // The scratchpad owns this window's visibility. Let it reconcile a
-    // restore from the taskbar instead of queueing a tile event.
+    // restore from the taskbar instead of queueing a tile event. Clones are
+    // routed there too: a user minimize of a shown clone has to dismiss the
+    // overlay rather than park a floating window on every desktop.
     if (isScratchpadWindow(this.window)) {
       controller().scratchpadMinimizedChanged(this.window);
       return;
@@ -2064,7 +2090,13 @@ var WindowHandler = class {
     }
   }
   canBeTiled() {
-    return !isScratchpadWindow(this.window) && !(this.window.fullScreen || this.window.minimized || this.maximized);
+    // A window the scratchpad owns must never be grabbed by a layout rebuild:
+    // a parked window is not on any desktop, and re-tiling a shown clone would
+    // snap the centered overlay back into its home tile.
+    if (isScratchpadOwned(this.window)) {
+      return false;
+    }
+    return !(this.window.fullScreen || this.window.minimized || this.maximized);
   }
 };
 
@@ -2085,6 +2117,13 @@ var WorkspaceHandler = class {
     );
     this.workspace.currentDesktopChanged.connect(
       () => controller().mouseFollowsFocus()?.displayChanged()
+    );
+    // Going back to the desktop a clone came from puts the overlay away: it is
+    // tiled here again, so it does not also need to float on top. It stays in
+    // the scratchpad stack. (The signal argument is the desktop we left, so
+    // the handler reads the new one from the workspace.)
+    this.workspace.currentDesktopChanged.connect(
+      () => controller().scratchpadDesktopChanged()
     );
     this.workspace.screensChanged.connect(this.updateDrivers.bind(this));
     this.workspace.desktopsChanged.connect(this.updateDrivers.bind(this));
@@ -2351,7 +2390,7 @@ var MouseFollowsFocusHandler = class {
     if (this.cursorInside(active)) {
       return;
     }
-    this.dbus.moveMouseToFocus().call();
+    qmlItem(this.dbus)?.moveMouseToFocus().call();
   }
 };
 // Layer-shell surfaces report a Normal window type, so specialWindow misses
@@ -2365,8 +2404,33 @@ function copyPos(p) {
 
 // src/controller/handlers/shortcuts.ts
 var ShortcutsHandler = class {
-  constructor(workspace, shortcuts) {
+  // `source` is main.qml's shortcuts Loader, not its item. The item can still
+  // be null while the script starts, so the signal wiring is deferred until
+  // the Loader hands over a real shortcuts object.
+  constructor(workspace, source) {
     this.workspace = workspace;
+    this.shortcuts = null;
+    if (source === null || source === void 0) {
+      return;
+    }
+    if (source.statusChanged === void 0) {
+      this.attach(source);
+      return;
+    }
+    if (source.item !== null && source.item !== void 0) {
+      this.attach(source.item);
+      return;
+    }
+    source.statusChanged.connect(() => {
+      if (source.item !== null && source.item !== void 0) {
+        this.attach(source.item);
+      }
+    });
+  }
+  attach(shortcuts) {
+    if (this.shortcuts !== null || shortcuts === null || shortcuts === void 0) {
+      return;
+    }
     this.shortcuts = shortcuts;
     this.shortcuts.toggleActiveTiling().activated.connect(this.toggleActiveTiling.bind(this));
     this.shortcuts.activateBelow().activated.connect(
@@ -2430,17 +2494,17 @@ var ShortcutsHandler = class {
     this.shortcuts.toggleMonocle().activated.connect(
       this.toggleMonocle.bind(this)
     );
+    this.shortcuts.cycleScratchpad().activated.connect(
+      this.cycleScratchpad.bind(this)
+    );
     this.shortcuts.toggleScratchpad().activated.connect(
       this.toggleScratchpad.bind(this)
     );
-    this.shortcuts.sendToScratchpad().activated.connect(
-      this.sendToScratchpad.bind(this)
-    );
-    this.shortcuts.removeFromScratchpad().activated.connect(
-      this.removeFromScratchpad.bind(this)
-    );
     this.shortcuts.toggleScratchpadWindow().activated.connect(
       this.toggleScratchpadWindow.bind(this)
+    );
+    this.shortcuts.cloneToScratchpad().activated.connect(
+      this.cloneToScratchpad.bind(this)
     );
   }
   // Returns the driver for the display in view, but only if it holds at least
@@ -2488,32 +2552,32 @@ var ShortcutsHandler = class {
   toggleMonocle() {
     this.modifyEngineSetting("monocle", "toggle", void 0, void 0, void 0, 2);
   }
+  // Step through the scratchpad stack: put the shown window away, bring the
+  // next one up, and hide everything past the last.
+  cycleScratchpad() {
+    controller().cycleScratchpad();
+  }
+  // Show or hide the scratchpad without moving through the stack.
   toggleScratchpad() {
     controller().toggleScratchpad();
   }
-  sendToScratchpad() {
-    const window = this.workspace.activeWindow;
-    if (window !== null && window !== void 0) {
-      controller().sendToScratchpad(window);
-    }
-  }
-  // The way back out: the active window leaves the scratchpad and returns to
-  // the current desktop. Nothing happens when it is not parked, so the same
-  // key is safe to press on any window.
-  removeFromScratchpad() {
-    const window = this.workspace.activeWindow;
-    if (window !== null && window !== void 0) {
-      controller().removeFromScratchpad(window);
-    }
-  }
-  // One key that does whichever of the two makes sense for the active window:
-  // park it, or take it back out. This is what most people will bind.
+  // One key for the active window: park it, take it back out, or (for a
+  // clone) unshare it from the desktop it lives on.
   toggleScratchpadWindow() {
     const window = this.workspace.activeWindow;
     if (window === null || window === void 0) {
       return;
     }
     controller().toggleScratchpadWindow(window);
+  }
+  // Keep the active window where it is and also list it in the scratchpad, so
+  // the other desktops can borrow it.
+  cloneToScratchpad() {
+    const window = this.workspace.activeWindow;
+    if (window === null || window === void 0) {
+      return;
+    }
+    controller().cloneToScratchpad(window);
   }
   // Steps the Custom engine through the shapes available for however many
   // windows are open right now.
@@ -2764,9 +2828,34 @@ var ShortcutsHandler = class {
 
 // src/controller/handlers/settings.ts
 var SettingsHandler = class {
-  constructor(settingsQml) {
-    this.settingsQml = settingsQml;
+  // `source` is main.qml's settings Loader. As with the shortcuts handler the
+  // item may still be pending when the script starts, so the dialog wiring
+  // waits for it instead of failing on a null object.
+  constructor(source) {
+    this.settingsQml = null;
     this.display = null;
+    if (source === null || source === void 0) {
+      return;
+    }
+    if (source.statusChanged === void 0) {
+      this.attach(source);
+      return;
+    }
+    if (source.item !== null && source.item !== void 0) {
+      this.attach(source.item);
+      return;
+    }
+    source.statusChanged.connect(() => {
+      if (source.item !== null && source.item !== void 0) {
+        this.attach(source.item);
+      }
+    });
+  }
+  attach(settingsQml) {
+    if (this.settingsQml !== null || settingsQml === null || settingsQml === void 0) {
+      return;
+    }
+    this.settingsQml = settingsQml;
     this.settingsQml.saveSettings.connect(this.saveSettings.bind(this));
     this.settingsQml.resetSettings.connect(this.resetSettings.bind(this));
     this.settingsQml.cycleVariant.connect(this.cycleVariant.bind(this));
@@ -2781,6 +2870,9 @@ var SettingsHandler = class {
   show(display, engineType, engineSettings, windowCount, layoutCount, shapeText, layoutIndex, customSelected, customLayoutSets, ratioInfo) {
     console().debug("showing settings");
     this.display = display;
+    if (this.settingsQml === null) {
+      return;
+    }
     this.settingsQml.show(
       display.desktop,
       display.activity,
@@ -2798,10 +2890,13 @@ var SettingsHandler = class {
     );
   }
   hide() {
+    if (this.settingsQml === null) {
+      return;
+    }
     this.settingsQml.hide();
   }
   isVisible() {
-    return this.settingsQml.visible;
+    return this.settingsQml !== null && this.settingsQml.visible;
   }
   saveSettings(desktop, activity, output, engineType, engineSettings) {
     controller().queueEvent({
@@ -2863,19 +2958,83 @@ function settingsBundle(engineType, engineSettings, lastEngine, lastEngineSettin
   return JSON.stringify(bundle);
 }
 var DBusHandler = class {
-  constructor(dbusQml) {
+  // `source` is main.qml's dbus Loader. Its item can still be null while the
+  // script starts, so every call below stays a no-op until attach() runs.
+  constructor(source) {
+    this.dbusQml = null;
+    // Timestamp of this instance, used both as the claim order and as the
+    // epoch token itself. TakeRequest only answers the owner of the stream,
+    // which is what retires instances left over from a reload (their QML
+    // timers may keep running, but they can no longer take requests).
+    this.instanceStart = Date.now();
+    this.epoch = null;
+    // Set once another instance owns the stream; this one then stays silent.
+    this.superseded = false;
+    if (source === null || source === void 0) {
+      return;
+    }
+    // main.qml hands over the dbus Loader, so the item is used when it is
+    // already there and picked up later when it is not.
+    if (source.statusChanged === void 0) {
+      this.attach(source);
+      return;
+    }
+    if (source.item !== null && source.item !== void 0) {
+      this.attach(source.item);
+      return;
+    }
+    source.statusChanged.connect(() => {
+      if (source.item !== null && source.item !== void 0) {
+        this.attach(source.item);
+      }
+    });
+  }
+  attach(dbusQml) {
+    if (this.dbusQml !== null || dbusQml === null || dbusQml === void 0) {
+      return;
+    }
     this.dbusQml = dbusQml;
+    // Only the incoming calls need their handler connected. Everything this
+    // script sends is fire-and-forget, so a saver that is not running only
+    // means the calls go unanswered, never that the script stops loading.
     dbusQml.getSettings().finished.connect(this.getSettingsCallback.bind(this));
     dbusQml.takeRequest().finished.connect(this.takeRequestCallback.bind(this));
     dbusQml.getOverviewOpen().finished.connect(this.getOverviewOpenCallback.bind(this));
     dbusQml.getScratchpad().finished.connect(this.getScratchpadCallback.bind(this));
+    // Claim the request stream: TakeRequest only answers an instance whose
+    // claimed epoch is still the newest, so a reload reliably takes over
+    // from whatever was running before it.
+    dbusQml.claimScriptEpoch().finished.connect(this.claimScriptEpochCallback.bind(this));
+    this.claimScriptEpoch();
+    // Recover the scratchpad list (the saver outlives the script). This runs
+    // here rather than at controller start so a deferred loader still asks
+    // once the saver is reachable.
+    this.getScratchpad();
+  }
+  claimScriptEpoch() {
+    const qml = this.dbusQml;
+    if (qml === null) return;
+    const call = qml.claimScriptEpoch();
+    call.setArguments([this.instanceStart]);
+    call.call();
+  }
+  claimScriptEpochCallback([epoch]) {
+    const value = Number(epoch);
+    // The saver answers with the accepted start time, or -1 when a newer
+    // instance already owns the stream. Only a positive value is our token.
+    this.epoch = Number.isFinite(value) && value > 0 ? value : null;
+    if (this.epoch === null) {
+      this.superseded = true;
+    }
   }
   // The overview turns monocle off on real desktops while it is open so they
   // show their tiled layout, then back on when it closes. The flag survives in
   // the saver, so a click overwriting the request slot cannot strand monocle
   // off: the next poll still reports the true state.
   pollOverviewOpen() {
-    this.dbusQml.getOverviewOpen().call();
+    const qml = this.dbusQml;
+    if (qml === null) return;
+    qml.getOverviewOpen().call();
   }
   getOverviewOpenCallback([open]) {
     controller().setOverviewOpen(open === true);
@@ -2883,20 +3042,44 @@ var DBusHandler = class {
   // The scratchpad list and the id currently shown. Volatile: it survives a
   // script reload (the saver outlives the script) but not a restart.
   getScratchpad() {
-    this.dbusQml.getScratchpad().call();
+    const qml = this.dbusQml;
+    if (qml === null) return;
+    qml.getScratchpad().call();
   }
   getScratchpadCallback([raw]) {
     controller().restoreScratchpadState(raw ?? "");
   }
   setScratchpad(json) {
-    this.dbusQml.setScratchpad().arguments = [json];
-    this.dbusQml.setScratchpad().call();
+    const qml = this.dbusQml;
+    if (qml === null) return;
+    // DBusCall takes its arguments through setArguments(); `arguments` is
+    // read-only from QML, and assigning it fails the whole call.
+    const call = qml.setScratchpad();
+    call.setArguments([json]);
+    call.call();
   }
-  // Ask the saver for the command the overview left behind, if any.
+  // Ask the saver for the command the overview left behind, if any. The
+  // saver only answers when our claimed epoch is still the newest, so
+  // instances left over from a reload cannot steal requests.
   takeRequest() {
-    this.dbusQml.takeRequest().call();
+    const qml = this.dbusQml;
+    if (qml === null || this.superseded) return;
+    const call = qml.takeRequest();
+    call.setArguments([this.epoch ?? -1]);
+    call.call();
   }
-  takeRequestCallback([requestStr]) {
+  takeRequestCallback([requestStr, currentEpoch]) {
+    const current = Number(currentEpoch);
+    if (Number.isFinite(current) && current !== this.epoch) {
+      if (this.epoch === null || current === 0 || current < this.epoch) {
+        // No owner yet (or the saver restarted and lost the claim). Our start
+        // time is newer than an empty or older one, so claiming takes it back.
+        this.claimScriptEpoch();
+      } else {
+        // A newer instance owns the stream now; stop competing with it.
+        this.superseded = true;
+      }
+    }
     if (requestStr === void 0 || requestStr === "") return;
     let request;
     try {
@@ -2910,8 +3093,11 @@ var DBusHandler = class {
   }
   getSettings(display) {
     console().debug("getSettings called");
-    this.dbusQml.getSettings().arguments = [display.toString()];
-    this.dbusQml.getSettings().call();
+    const qml = this.dbusQml;
+    if (qml === null) return;
+    const call = qml.getSettings();
+    call.setArguments([display.toString()]);
+    call.call();
   }
   getSettingsCallback([
     desktopIdStr,
@@ -2971,28 +3157,40 @@ var DBusHandler = class {
   }
   setSettings(display, engineType, engineSettings, lastEngine, lastEngineSettings) {
     console().debug("setSettings called");
-    this.dbusQml.setSettings().arguments = [
+    const qml = this.dbusQml;
+    if (qml === null) return;
+    const call = qml.setSettings();
+    call.setArguments([
       display.toString(),
       settingsBundle(engineType, engineSettings, lastEngine, lastEngineSettings)
-    ];
-    this.dbusQml.setSettings().call();
+    ]);
+    call.call();
   }
   resetSettings(display) {
     console().debug("resetSettings called");
-    this.dbusQml.resetSettings().arguments = [display.toString()];
-    this.dbusQml.resetSettings().call();
+    const qml = this.dbusQml;
+    if (qml === null) return;
+    const call = qml.resetSettings();
+    call.setArguments([display.toString()]);
+    call.call();
   }
   // Volatile layout/monocle state for the overview effect.
   setState(display, stateJson) {
-    this.dbusQml.setState().arguments = [display.toString(), stateJson];
-    this.dbusQml.setState().call();
+    const qml = this.dbusQml;
+    if (qml === null) return;
+    const call = qml.setState();
+    call.setArguments([display.toString(), stateJson]);
+    call.call();
   }
   // Script-wide options live in kwinrc, which the script itself cannot write,
   // so the saver writes the file for us on the rare occasion one changes.
   setGlobalSetting(key, value) {
     console().debug("setGlobalSetting called -", key, value);
-    this.dbusQml.setGlobalSetting().arguments = [key, value];
-    this.dbusQml.setGlobalSetting().call();
+    const qml = this.dbusQml;
+    if (qml === null) return;
+    const call = qml.setGlobalSetting();
+    call.setArguments([key, value]);
+    call.call();
   }
 };
 
@@ -3063,24 +3261,57 @@ function buildLayout(kwinRootTile, engineRootTile) {
   }
   return tileMap;
 }
-// True when KWin's children already have exactly the proportions the engine
-// is about to ask for.
+// The geometry setChildRelativeSize() would write for one child, without
+// touching KWin. KWin's own relativeGeometry is what the comparison needs to
+// inspect.
+function expectedChildGeometry(kwinTile, engineTile, index) {
+  const totalSize = engineTile.totalChildrenSize();
+  const engineChild = engineTile.children[index];
+  const geom = qt().rect(
+    kwinTile.relativeGeometry.x,
+    kwinTile.relativeGeometry.y,
+    kwinTile.relativeGeometry.width,
+    kwinTile.relativeGeometry.height
+  );
+  if (engineTile.layoutDirection === 1 /* Horizontal */) {
+    geom.width *= engineChild.size / totalSize;
+    let previousChildrenSize = 0;
+    for (let i = 0; i < index; i += 1) {
+      previousChildrenSize += engineTile.children[i].size;
+    }
+    previousChildrenSize /= totalSize;
+    previousChildrenSize *= kwinTile.relativeGeometry.width;
+    geom.x += previousChildrenSize;
+  } else if (engineTile.layoutDirection === 2 /* Vertical */) {
+    geom.height *= engineChild.size / totalSize;
+    let previousChildrenSize = 0;
+    for (let i = 0; i < index; i += 1) {
+      previousChildrenSize += engineTile.children[i].size;
+    }
+    previousChildrenSize /= totalSize;
+    previousChildrenSize *= kwinTile.relativeGeometry.height;
+    geom.y += previousChildrenSize;
+  }
+  return geom;
+}
+// True when KWin's children already have exactly the geometry the engine is
+// about to ask for. Compare the whole rect, not just each child's share of the
+// parent: a lone window is always 100% of its parent, so a tile that still
+// carries an old geometry would read as unchanged and never be resized. That
+// is what left a restored scratchpad window at its previous size.
 function childrenAreSame(kwinTile, engineTile) {
   if (kwinTile.tiles.length != engineTile.children.length) {
     return false;
   }
-  const totalChildrenSize = engineTile.totalChildrenSize();
-  const layoutDirection = kwinTile.layoutDirection;
   for (let i = 0; i < kwinTile.tiles.length; i += 1) {
-    const kwinChild = kwinTile.tiles[i];
-    const engineChildSize = engineTile.children[i].size / totalChildrenSize;
-    let relativeSize = 1;
-    if (layoutDirection === 1 /* Horizontal */) {
-      relativeSize = kwinChild.relativeGeometry.width / kwinTile.relativeGeometry.width;
-    } else if (layoutDirection === 2 /* Vertical */) {
-      relativeSize = kwinChild.relativeGeometry.height / kwinTile.relativeGeometry.height;
-    }
-    if (!(Math.abs(relativeSize - engineChildSize) <= 1e-5)) {
+    const expected = expectedChildGeometry(kwinTile, engineTile, i);
+    const actual = kwinTile.tiles[i].relativeGeometry;
+    if (
+      Math.abs(actual.x - expected.x) > 1e-5 ||
+      Math.abs(actual.y - expected.y) > 1e-5 ||
+      Math.abs(actual.width - expected.width) > 1e-5 ||
+      Math.abs(actual.height - expected.height) > 1e-5
+    ) {
       return false;
     }
   }
@@ -3437,8 +3668,15 @@ var Driver = class {
       if (!this.tileMap.has(hookedTile)) {
         const hooks = this.tileHooks.get(hookedTile);
         if (hooks !== void 0) {
-          hookedTile.relativeGeometryChanged.disconnect(hooks[0]);
-          hookedTile.childTilesChanged.disconnect(hooks[1]);
+          // A tile whose KWin counterpart was deleted (parking the last
+          // window of a desktop, a layout reset) has no signals left to
+          // disconnect; letting that throw would abort the whole rebuild.
+          try {
+            hookedTile.relativeGeometryChanged.disconnect(hooks[0]);
+            hookedTile.childTilesChanged.disconnect(hooks[1]);
+          } catch (e) {
+            console().debug("could not disconnect tile hooks", e);
+          }
         }
         this.hookedTiles.delete(hookedTile);
         this.tileHooks.delete(hookedTile);
@@ -3794,7 +4032,7 @@ function kwinClassOf(window) {
 // and other popups used to be registered as floating windows even though they
 // can never be tiled, and every rebuild that followed could disturb the real
 // tiled windows underneath them.
-function isTrackableWindow(window) {
+function isTrackableWindow(window, allowUnresizeable) {
   if (window === null || window === void 0) {
     return false;
   }
@@ -3807,8 +4045,10 @@ function isTrackableWindow(window) {
   }
   // A fixed-size window cannot fill a tile. Chromium's screen-share indicator
   // is a normal, non-transient 456x62 window; tiling it squeezed the real
-  // window beside it instead of leaving the indicator floating.
-  if (window.resizeable === false) {
+  // window beside it instead of leaving the indicator floating. Fullscreen
+  // windows report resizeable === false too, which is why the scratchpad
+  // (which never tiles anything) accepts them.
+  if (window.resizeable === false && !allowUnresizeable) {
     return false;
   }
   // Kitty's Wayland file-drag icon is a real normal toplevel with the same
@@ -3828,6 +4068,11 @@ function isTrackableWindow(window) {
     return false;
   }
   return true;
+}
+// The scratchpad also accepts windows that can never be tiled, such as
+// fullscreen players: they are remembered as floating and restored unchanged.
+function canBeScratchpadWindow(window) {
+  return isTrackableWindow(window, true);
 }
 // KWin keeps its own tile pointer on a window independently of Folonium's
 // engine. Releasing it whenever the engine stops tiling a window prevents the
@@ -3888,15 +4133,25 @@ var Controller = class {
     // window list before that means "not known yet", not "the user closed
     // everything", so monocle must not be cleared on it.
     this.started = false;
+    // A script reload builds a new controller while the previous instance's
+    // timers may still fire once. The dbus handler is created below for this
+    // instance only.
     // The overview shares one long-lived effect, so its open/closed state is
     // remembered here and every request is idempotent: only the final state
     // matters, which keeps a dropped intermediate request harmless.
     this.overviewOpen = false;
     // Scratchpad: ordered windows, the one currently shown, and the state to
-    // restore when a window leaves the scratchpad. `scratchpadBusy` suppresses
-    // the minimizedChanged round-trips caused by our own show/hide writes.
+    // restore when a window leaves the scratchpad. `scratchpadBusy`
+    // suppresses the minimizedChanged round-trips caused by our own
+    // show/hide writes.
     this.scratchpadOrder = [];
     this.scratchpadShown = null;
+    // Remembered even while nothing is shown, so the toggle key brings back the
+    // window the user last had up instead of starting over at the first one.
+    this.lastScratchpadShown = null;
+    // Per-window size and position for the overlay, so toggling a window back
+    // up puts it exactly where the user last left it instead of recentring.
+    this.scratchpadShownGeometry = /* @__PURE__ */ new Map();
     this.scratchpadSaved = /* @__PURE__ */ new Map();
     this.scratchpadBusy = false;
     this.windowHandlers = /* @__PURE__ */ new Map();
@@ -3910,9 +4165,7 @@ var Controller = class {
     this.eventTimer.interval = config().rebuildDelay;
     this.eventTimer.repeat = false;
     this.eventTimer.triggered.connect(this.processEvents.bind(this));
-    if (config().useDBusSaver) {
-      this.dbusHandler = new DBusHandler(this.qmlObjects.dbus);
-    }
+    this.dbusHandler = config().useDBusSaver ? new DBusHandler(this.qmlObjects.dbus) : null;
     this.requestTimer = this.qmlObjects.requestTimer;
     this.requestTimer.interval = 500;
     this.requestTimer.triggered.connect(this.pollRequest.bind(this));
@@ -3930,9 +4183,8 @@ var Controller = class {
       this.qmlObjects.shortcuts
     );
     this.updateDrivers();
-    // Recover the scratchpad list if the script was reloaded while windows
-    // were parked (the saver outlives the script).
-    this.dbusHandler?.getScratchpad();
+    // The scratchpad list is recovered by the D-Bus handler once it attaches
+    // (see DBusHandler.attach), so a deferred loader is covered too.
   }
   // The popup button and the shortcut land here: hand this display's tiling to
   // KWin, or take it back from KWin.
@@ -3963,22 +4215,69 @@ var Controller = class {
   // ---- scratchpad -------------------------------------------------------
   //
   // A stacklet-style stash. A window sent here leaves the tiling engine, is
-  // minimized, and is remembered in `scratchpadOrder`. Toggling shows one at
-  // a time, centered over the active output; toggling past the last one hides
-  // it again. The window is never a member of a second desktop: while shown it
-  // uses KWin's onAllDesktops flag purely for visibility, and every layout
-  // path excludes it by identity.
-  isScratchpad(window) {
-    return isScratchpadWindow(window);
-  }
+  // minimized, and is remembered in `scratchpadOrder`. One at a time can be
+  // shown, floated above the current desktop; pressing the cycle key again
+  // moves on to the next one, and past the last one everything is hidden.
+  // A parked window never belongs to a second desktop: while shown it uses
+  // KWin's onAllDesktops flag purely for visibility, and every layout path
+  // excludes it by identity.
+  //
+  // Cloned windows (cloneToScratchpad) are different: they stay tiled on
+  // their own desktop and only appear on this desktop for as long as they are
+  // the shown scratchpad window. Going back to the desktop they tile on puts
+  // the overlay away, but the window stays in the scratchpad stack so other
+  // desktops can borrow it again.
   scratchpadJson() {
     const order = [];
+    const clones = [];
+    // Besides membership, publish just enough to rebuild the per-window state
+    // after a script reload: where each member lives, whether it was tiled,
+    // and the overlay rect it was last shown at.
+    const homes = {};
+    const tiled = {};
+    const geoms = {};
+    const outputs = {};
+    const remember = (w) => {
+      const id = String(w.internalId);
+      const saved = this.scratchpadSaved.get(w);
+      if (saved !== void 0 && saved.desktops.length > 0) {
+        homes[id] = String(saved.desktops[0].id);
+        tiled[id] = saved.tiled === true;
+      } else if (!w.onAllDesktops && w.desktops.length > 0) {
+        homes[id] = String(w.desktops[0].id);
+      }
+      const outputName = saved !== void 0 && typeof saved.outputName === "string" && saved.outputName !== ""
+        ? saved.outputName
+        : w.output !== null && w.output !== void 0
+          ? w.output.name
+          : "";
+      if (outputName !== "") {
+        outputs[id] = outputName;
+      }
+      const shown = this.scratchpadShownGeometry.get(w);
+      if (shown !== void 0 && shown.rect !== null && shown.rect.width > 0) {
+        const r = shown.rect;
+        geoms[id] = { x: r.x, y: r.y, width: r.width, height: r.height, output: shown.output };
+      }
+    };
     for (const w of this.scratchpadOrder) {
-      if (this.windowExists(w)) order.push(String(w.internalId));
+      if (!this.windowExists(w)) continue;
+      order.push(String(w.internalId));
+      remember(w);
+    }
+    for (const w of scratchpadClonedWindows) {
+      if (!this.windowExists(w)) continue;
+      clones.push(String(w.internalId));
+      remember(w);
     }
     return JSON.stringify({
       order,
-      shown: this.scratchpadShown !== null ? String(this.scratchpadShown.internalId) : ""
+      shown: this.scratchpadShown !== null ? String(this.scratchpadShown.internalId) : "",
+      clones,
+      homes,
+      tiled,
+      geoms,
+      outputs
     });
   }
   publishScratchpad() {
@@ -3988,46 +4287,77 @@ var Controller = class {
   // from the scratchpad can put a floating window back where it was.
   rememberScratchpadWindow(window) {
     const handler = this.windowHandlers.get(window);
+    // Dropping fullscreen first makes KWin apply the geometry the window had
+    // before it went fullscreen; that is the state to restore on unsend.
+    const fullScreen = window.fullScreen === true;
+    if (fullScreen) {
+      window.fullScreen = false;
+    }
     const frame = window.frameGeometry;
     const tiled = handler !== void 0 && handler.wantsTiled === true && this.isWindowTiled(window) === true;
+    const output = window.output;
     this.scratchpadSaved.set(window, {
       tiled,
       geometry: qt().rect(frame.x, frame.y, frame.width, frame.height),
       desktops: window.desktops.slice(),
-      output: window.output
+      output,
+      outputName: output !== null && output !== void 0 ? output.name : "",
+      fullScreen
     });
     console().debug("scratchpad: saved", window.resourceClass, "tiled", tiled, "wantsTiled", handler?.wantsTiled);
   }
-  // The shortcut counterpart of the overview's middle click: take a window out
-  // of the scratchpad and give it back to the desktop in view. It is a no-op
-  // for windows that were never parked.
-  removeFromScratchpad(window) {
-    if (window === null || window === void 0 || !scratchpadWindows.has(window)) {
-      return;
-    }
-    this.restoreFromScratchpad(window);
-  }
-  // Send or unsend, depending on where the window already is. `sendToScratchpad`
-  // on a parked window only hides it, so a plain toggle needs this branch.
+  // One key for the active window: park it, or take it back out — for a clone
+  // that means unshare it from the desktop it lives on.
   toggleScratchpadWindow(window) {
     if (window === null || window === void 0) {
       return;
     }
-    if (scratchpadWindows.has(window)) {
-      this.restoreFromScratchpad(window);
-      return;
-    }
     this.sendToScratchpad(window);
   }
+  // The overview's "leave it on the desktop too" action: the window stays in
+  // its desktop's layout and also appears in the scratchpad, so the other
+  // desktops can borrow it.
+  cloneToScratchpad(window) {
+    if (window === null || window === void 0 || !canBeScratchpadWindow(window)) {
+      return;
+    }
+    let previous = null;
+    if (scratchpadWindows.has(window)) {
+      // A clone is made from a plain desktop window. Whatever flavor of
+      // scratchpad member this is — parked, cloned, shown — take it fully out
+      // first so it lands on a desktop, then share it from there.
+      previous = this.scratchpadSaved.get(window) ?? null;
+      this.restoreFromScratchpad(window);
+    }
+    this.rememberScratchpadWindow(window);
+    const saved = this.scratchpadSaved.get(window);
+    if (saved !== void 0 && previous !== null && previous !== void 0) {
+      // The restore queued a rebuild, so the window may not be tiled again
+      // yet. Keep how it used to live; the desktop it landed on is whatever
+      // restoreFromScratchpad just chose, which is the one this clone keeps.
+      saved.tiled = previous.tiled;
+      saved.fullScreen = previous.fullScreen;
+      if (previous.tiled === false) {
+        saved.geometry = previous.geometry;
+      }
+    }
+    scratchpadWindows.add(window);
+    scratchpadClonedWindows.add(window);
+    if (!this.scratchpadOrder.includes(window)) {
+      this.scratchpadOrder.push(window);
+    }
+    console().log("cloned window into scratchpad", window.resourceClass);
+    this.publishScratchpad();
+  }
   sendToScratchpad(window) {
-    if (window === null || window === void 0 || !isTrackableWindow(window)) {
+    if (window === null || window === void 0 || !canBeScratchpadWindow(window)) {
       return;
     }
     if (scratchpadWindows.has(window)) {
-      // Sending a shown scratchpad window again only hides it: the
-      // scratchpad is where it already lives. The overview is the way to
-      // take a window back out to a desktop.
-      this.hideScratchpadWindow(window);
+      // Send and unsend share one key: a window that is already in the
+      // scratchpad — parked, cloned, shown or hidden — goes back out to a
+      // desktop. The overview is the other way back out.
+      this.restoreFromScratchpad(window);
       return;
     }
     this.rememberScratchpadWindow(window);
@@ -4058,22 +4388,104 @@ var Controller = class {
     console().log("sent window to scratchpad", window.resourceClass);
     this.publishScratchpad();
   }
+  // The desktop a scratchpad window came from. This is captured when the
+  // window is sent away, because a shown window is on every desktop and a
+  // minimized one may report none.
+  scratchpadHomeDesktop(window) {
+    const saved = this.scratchpadSaved.get(window);
+    if (saved !== void 0 && saved.desktops.length > 0) {
+      return saved.desktops[0];
+    }
+    return window.desktops.length === 1 ? window.desktops[0] : null;
+  }
+  // A clone shown on another output goes back to the screen whose layout it
+  // belongs to, so its home desktop can tile it where it was.
+  scratchpadReturnHome(window, saved) {
+    if (saved === void 0 || saved === null) {
+      return;
+    }
+    if (saved.desktops.length > 0) {
+      window.desktops = saved.desktops;
+    }
+    const name = typeof saved.outputName === "string" && saved.outputName !== ""
+      ? saved.outputName
+      : saved.output !== null && saved.output !== void 0
+        ? saved.output.name
+        : "";
+    if (name === "") {
+      return;
+    }
+    const output = window.output;
+    if (output !== null && output !== void 0 && output.name === name) {
+      return;
+    }
+    const screen = this.workspace.screens.find((s) => s.name === name);
+    if (screen !== void 0) {
+      this.workspace.sendClientToScreen(window, screen);
+    }
+  }
   // Remove a window from the scratchpad and give it back to a desktop. With no
-  // target it returns to the current desktop; the overview passes the desktop
-  // a card was dropped on.
+  // target it returns to the desktop it came from; the overview passes the
+  // desktop a card was dropped on.
   restoreFromScratchpad(window, desktop) {
     if (!scratchpadWindows.has(window)) {
       return;
     }
     const saved = this.scratchpadSaved.get(window);
     const tiled = saved === void 0 || saved.tiled === true;
+    const cloned = scratchpadClonedWindows.has(window);
+    // Resolve the home desktop before the saved state is dropped below; a
+    // shown window is on every desktop and would otherwise report none.
+    const homeDesktop = this.scratchpadHomeDesktop(window);
     scratchpadWindows.delete(window);
+    scratchpadClonedWindows.delete(window);
     this.scratchpadOrder = this.scratchpadOrder.filter((w) => w !== window);
     if (this.scratchpadShown === window) {
       this.scratchpadShown = null;
     }
+    if (this.lastScratchpadShown === window) {
+      this.lastScratchpadShown = null;
+    }
+    // Clones and parked windows alike are fully out of the scratchpad now, so
+    // their remembered state is spent.
     this.scratchpadSaved.delete(window);
-    const target = desktop ?? this.workspace.currentDesktop;
+
+    if (cloned && (desktop === null || desktop === void 0)) {
+      // A clone is still tiled where it was; only the scratchpad side has to
+      // be cleaned up. Dragging its card onto a desktop falls through below
+      // and moves the window like any other.
+      const wasOnAllDesktops = window.onAllDesktops === true;
+      this.scratchpadBusy = true;
+      try {
+        window.fullScreen = false;
+        window.keepAbove = false;
+        window.onAllDesktops = false;
+        window.minimized = false;
+        this.scratchpadReturnHome(window, saved);
+        if (wasOnAllDesktops) {
+          // It was on loan above another desktop; bring it forward where it
+          // lands now that it is back home. An idle clone stays where it is.
+          this.workspace.activeWindow = window;
+        }
+      } finally {
+        this.scratchpadBusy = false;
+      }
+      const display = window.output !== null && window.output !== void 0
+        ? new Display(window.desktops[0] ?? this.workspace.currentDesktop, window.activities[0] ?? this.workspace.currentActivity, window.output)
+        : null;
+      if (display !== null) {
+        this.queueEvent({ t: "updateTiles", display, rebuild: true });
+      }
+      console().log("restored window from scratchpad (clone)", window.resourceClass);
+      this.publishScratchpad();
+      return;
+    }
+
+    // Unsend gives the window back to the desktop it came from. The overview
+    // passes an explicit desktop when a card is dropped; the shortcut passes
+    // none and used to fall back to whatever desktop was in view, which moved
+    // a parked window away from its home.
+    const target = desktop ?? homeDesktop ?? this.workspace.currentDesktop;
 
     // Drivers are per desktop, so a window restored to a different desktop
     // belongs to a different driver. Drop the stale entry first: the parked
@@ -4108,10 +4520,17 @@ var Controller = class {
       // A window that was floating before keeps its old geometry; a tiled one
       // is placed by the engine again. Applying it a moment later matters:
       // KWin ignores geometry writes made in the same call that unminimizes.
+      // A saved fullscreen flag is cleared rather than restored: Wayland
+      // clients re-assert fullscreen on their own, and re-asserting it here
+      // leaves the window stuck between the two states.
       if (saved !== void 0 && saved.tiled === false) {
         const g = saved.geometry;
+        const wasFullScreen = saved.fullScreen === true;
         Qt.callLater(() => {
           if (this.windowExists(window)) {
+            if (wasFullScreen) {
+              window.fullScreen = false;
+            }
             window.frameGeometry = qt().rect(g.x, g.y, g.width, g.height);
           }
         });
@@ -4154,7 +4573,37 @@ var Controller = class {
     console().log("restored window from scratchpad", window.resourceClass);
     this.publishScratchpad();
   }
+  // The toggle key: show the scratchpad window the user last had up, or put
+  // the shown one away. It never steps to another window — that is the cycle
+  // key — so pressing it again brings the same window back.
   toggleScratchpad() {
+    const order = this.scratchpadOrder.filter((w) => this.windowExists(w));
+    this.scratchpadOrder = order;
+    if (this.scratchpadShown !== null) {
+      if (this.windowExists(this.scratchpadShown)) {
+        this.lastScratchpadShown = this.scratchpadShown;
+        this.hideScratchpadWindow(this.scratchpadShown);
+      } else {
+        this.scratchpadShown = null;
+      }
+      return;
+    }
+    if (order.length === 0) {
+      console().log("scratchpad is empty");
+      return;
+    }
+    let next = this.lastScratchpadShown;
+    if (next === null || !order.includes(next)) {
+      next = order[0];
+    }
+    this.showScratchpadWindow(next);
+  }
+  // The cycle key: step through the scratchpad stack. The shown window is put
+  // away and the next one comes up; past the last one this press only hides,
+  // so the next press starts over with the first (stacklet behaviour). Taking
+  // a window out of the scratchpad is what the send/unsend key and the
+  // overview are for, so cycling never empties the stack on its own.
+  cycleScratchpad() {
     const order = this.scratchpadOrder.filter((w) => this.windowExists(w));
     this.scratchpadOrder = order;
     if (order.length === 0) {
@@ -4167,10 +4616,38 @@ var Controller = class {
       next = current < 0 ? 0 : current + 1;
       this.hideScratchpadWindow(this.scratchpadShown);
     }
-    // Past the last window the press only hides, matching stacklet.
     if (next < order.length) {
       this.showScratchpadWindow(order[next]);
     }
+  }
+  // Where the shown window should sit: the geometry it was last left at, kept
+  // for the session so cycling, hiding and showing again does not reset it,
+  // and centred at the configured size the first time. A stored geometry on
+  // an output that is gone falls back to centring on the active one.
+  scratchpadTargetGeometry(screen, window) {
+    // Each window keeps its own last overlay rect. A window that has never
+    // been shown gets the configured centred size, not the rect another
+    // window was last left at.
+    const remembered = window !== void 0 ? this.scratchpadShownGeometry.get(window) : null;
+    if (remembered !== null && remembered !== void 0 && remembered.output !== "") {
+      const g = remembered.rect;
+      const restored = this.workspace.screens.find((s) => s.name === remembered.output);
+      // Reuse it while the output it was shown on is still connected; if the
+      // user unplugged that monitor, centre on the active one instead of
+      // leaving the window off the edge.
+      if (restored !== void 0 && g !== null && g.width > 0 && g.height > 0) {
+        return qt().rect(g.x, g.y, g.width, g.height);
+      }
+    }
+    const desktop = this.workspace.currentDesktop;
+    const widthPercent = Math.min(100, Math.max(20, Number(config().scratchpadWidth) || 60));
+    const heightPercent = Math.min(100, Math.max(20, Number(config().scratchpadHeight) || 60));
+    const area = this.workspace.clientArea(this.kwin.MaximizeArea, screen, desktop);
+    const width = Math.round(area.width * widthPercent / 100);
+    const height = Math.round(area.height * heightPercent / 100);
+    const x = Math.round(area.x + (area.width - width) / 2);
+    const y = Math.round(area.y + (area.height - height) / 2);
+    return qt().rect(x, y, width, height);
   }
   showScratchpadWindow(window) {
     if (!scratchpadWindows.has(window) || !this.windowExists(window)) {
@@ -4183,52 +4660,182 @@ var Controller = class {
     if (screen === null || screen === void 0) {
       return;
     }
-    const desktop = this.workspace.currentDesktop;
+    const current = this.workspace.currentDesktop;
+    const cloned = scratchpadClonedWindows.has(window);
+    // A clone that tiles on the desktop in view already is here: activating it
+    // is the sane thing to do instead of floating a copy of itself.
+    if (cloned && current !== null && current !== void 0) {
+      const desktops = window.desktops;
+      if (desktops.length === 1 && String(desktops[0].id) === String(current.id) && !window.minimized) {
+        this.scratchpadShown = window;
+        this.lastScratchpadShown = window;
+        this.workspace.activeWindow = window;
+        this.publishScratchpad();
+        return;
+      }
+    }
+    const target = this.scratchpadTargetGeometry(screen, window);
+    // The overlay lives on the output in view, whichever output the window
+    // was parked from.
     if (window.output === null || window.output === void 0 || window.output.name !== screen.name) {
       this.workspace.sendClientToScreen(window, screen);
     }
-    const widthPercent = Math.min(100, Math.max(20, Number(config().scratchpadWidth) || 60));
-    const heightPercent = Math.min(100, Math.max(20, Number(config().scratchpadHeight) || 60));
-    const area = this.workspace.clientArea(this.kwin.MaximizeArea, screen, desktop);
-    const width = Math.round(area.width * widthPercent / 100);
-    const height = Math.round(area.height * heightPercent / 100);
-    const x = Math.round(area.x + (area.width - width) / 2);
-    const y = Math.round(area.y + (area.height - height) / 2);
+    if (cloned) {
+      // The clone is out of its desktop's layout for as long as it is on loan.
+      // Free its tile first: otherwise the overlay geometry write below makes
+      // KWin fit the tile to the overlay size, squeezing whichever windows
+      // shared that layout. KWin tiles it again when it comes home.
+      releaseWindowTile(window);
+    }
     this.scratchpadBusy = true;
     try {
+      window.fullScreen = false;
       window.onAllDesktops = true;
       window.keepAbove = true;
       window.minimized = false;
-      window.frameGeometry = qt().rect(x, y, width, height);
+      window.frameGeometry = qt().rect(target.x, target.y, target.width, target.height);
     } finally {
       this.scratchpadBusy = false;
     }
+    this.scratchpadShownGeometry.set(window, { rect: target, output: screen.name });
     this.workspace.activeWindow = window;
     this.scratchpadShown = window;
+    this.lastScratchpadShown = window;
+    if (!cloned) {
+      this.scratchpadSaved.set(window, this.scratchpadSaved.get(window) ?? {
+        tiled: false,
+        geometry: target,
+        desktops: current !== null && current !== void 0 ? [current] : [],
+        output: screen
+      });
+    }
     this.publishScratchpad();
   }
   hideScratchpadWindow(window) {
+    const cloned = scratchpadClonedWindows.has(window);
+    const shownNow = window.frameGeometry;
+    // A clone that was merely activated on its own desktop still fills the
+    // tile it came from; only one that was floated out to another desktop has
+    // an overlay rect worth remembering.
+    if (shownNow !== null && shownNow !== void 0 && shownNow.width > 0 && shownNow.height > 0
+      && (!cloned || window.onAllDesktops)) {
+      // The user may have moved or resized it while it was shown; that is the
+      // geometry to remember for the next show.
+      const output = window.output;
+      const remembered = {
+        rect: qt().rect(shownNow.x, shownNow.y, shownNow.width, shownNow.height),
+        output: output !== null && output !== void 0 ? output.name : ""
+      };
+      this.scratchpadShownGeometry.set(window, remembered);
+    }
     this.scratchpadBusy = true;
     try {
-      window.minimized = true;
+      window.fullScreen = false;
       window.keepAbove = false;
       window.onAllDesktops = false;
-      const saved = this.scratchpadSaved.get(window);
-      if (saved !== void 0 && saved.desktops.length > 0) {
-        window.desktops = saved.desktops;
+      if (cloned) {
+        // Back to its own desktop, still tiled there.
+        this.scratchpadReturnHome(window, this.scratchpadSaved.get(window));
+        window.minimized = false;
+      } else {
+        window.minimized = true;
+        const saved = this.scratchpadSaved.get(window);
+        if (saved !== void 0 && saved.desktops.length > 0) {
+          window.desktops = saved.desktops;
+        }
       }
     } finally {
       this.scratchpadBusy = false;
+    }
+    if (cloned) {
+      // Fullscreen is not re-applied here either: the client re-asserts it on
+      // its own, and KWin needs the tiled geometry first.
+      const display = window.output !== null && window.output !== void 0
+        ? new Display(window.desktops[0] ?? this.workspace.currentDesktop, window.activities[0] ?? this.workspace.currentActivity, window.output)
+        : null;
+      if (display !== null) {
+        this.queueEvent({ t: "updateTiles", display, rebuild: true });
+      }
     }
     if (this.scratchpadShown === window) {
       this.scratchpadShown = null;
     }
     this.publishScratchpad();
   }
+  // Going back to the desktop a clone came from puts the overlay away, but the
+  // clone stays in the scratchpad stack: it is simply tiled on its own desktop
+  // again, and other desktops can still borrow it. Removing it here was the
+  // bug that made a clone vanish from the stack when its home desktop was
+  // revisited. While a clone is shown it reports no desktops at all
+  // (onAllDesktops), so the home desktop comes from the state remembered at
+  // clone time. KWin's currentDesktopChanged signal carries the desktop we
+  // just left; the new one is already current, so read it from the workspace.
+  scratchpadDesktopChanged() {
+    const desktop = this.workspace.currentDesktop;
+    if (desktop === null || desktop === void 0) {
+      return;
+    }
+    const shown = this.scratchpadShown;
+    if (shown === null || !this.windowExists(shown) || !isScratchpadCloned(shown)) {
+      return;
+    }
+    // Only a clone that was floated above another desktop needs to come down.
+    // One that is already tiled on its home desktop is left as it is.
+    if (!shown.onAllDesktops) {
+      return;
+    }
+    const home = this.scratchpadHomeDesktop(shown);
+    if (home !== null && String(home.id) === String(desktop.id)) {
+      this.hideScratchpadWindow(shown);
+    }
+  }
   // A restore from the taskbar (not one of our own writes) becomes "shown",
-  // and the previously shown scratchpad window is hidden again.
+  // and the previously shown scratchpad window is hidden again. Clones are
+  // tiled windows that minimize like any other, so they are left alone.
   scratchpadMinimizedChanged(window) {
     if (this.scratchpadBusy || !scratchpadWindows.has(window) || !this.windowExists(window)) {
+      return;
+    }
+    if (scratchpadClonedWindows.has(window)) {
+      if (window.minimized) {
+        if (this.scratchpadShown === window) {
+          // The user minimized the shown clone: dismiss the overlay and send
+          // the window home, still minimized, instead of leaving it parked on
+          // every desktop.
+          if (window.onAllDesktops && window.frameGeometry !== null && window.frameGeometry !== void 0) {
+            const frame = window.frameGeometry;
+            const output = window.output;
+            this.scratchpadShownGeometry.set(window, {
+              rect: qt().rect(frame.x, frame.y, frame.width, frame.height),
+              output: output !== null && output !== void 0 ? output.name : ""
+            });
+          }
+          this.scratchpadShown = null;
+          this.scratchpadBusy = true;
+          try {
+            window.keepAbove = false;
+            window.onAllDesktops = false;
+            this.scratchpadReturnHome(window, this.scratchpadSaved.get(window));
+          } finally {
+            this.scratchpadBusy = false;
+          }
+          this.publishScratchpad();
+        }
+        return;
+      }
+      // Restored from the taskbar. Its KWin tile was released when it was
+      // floated, so ask the layout to put it back on its desktop.
+      const saved = this.scratchpadSaved.get(window);
+      const desk = saved !== void 0 && saved.desktops.length > 0 ? saved.desktops[0] : window.desktops[0];
+      const output = window.output;
+      if (desk !== void 0 && output !== null && output !== void 0) {
+        this.queueEvent({
+          t: "updateTiles",
+          display: new Display(desk, window.activities[0] ?? this.workspace.currentActivity, output),
+          rebuild: true
+        });
+      }
+      this.workspace.activeWindow = window;
       return;
     }
     if (window.minimized) {
@@ -4268,10 +4875,46 @@ var Controller = class {
     for (const w of this.workspace.stackingOrder) {
       byId.set(String(w.internalId), w);
     }
+    const deskById = /* @__PURE__ */ new Map();
+    for (const d of this.workspace.desktops) {
+      deskById.set(String(d.id), d);
+    }
+    const homes = state.homes !== null && typeof state.homes === "object" ? state.homes : {};
+    const tiledFlags = state.tiled !== null && typeof state.tiled === "object" ? state.tiled : {};
+    const geoms = state.geoms !== null && typeof state.geoms === "object" ? state.geoms : {};
+    const outputNames = state.outputs !== null && typeof state.outputs === "object" ? state.outputs : {};
+    // Rebuild a window's saved state from what the saver published, keeping
+    // whatever rememberScratchpadWindow() just captured for anything missing.
+    const applyRemembered = (w) => {
+      const id = String(w.internalId);
+      const saved = this.scratchpadSaved.get(w);
+      if (saved === void 0) {
+        return;
+      }
+      const homeId = homes[id];
+      const home = homeId !== void 0 ? deskById.get(String(homeId)) : void 0;
+      if (home !== void 0) {
+        saved.desktops = [home];
+      }
+      if (typeof tiledFlags[id] === "boolean") {
+        saved.tiled = tiledFlags[id];
+      }
+      const outputName = outputNames[id];
+      if (typeof outputName === "string" && outputName !== "") {
+        saved.outputName = outputName;
+      }
+      const g = geoms[id];
+      if (g !== null && typeof g === "object" && Number(g.width) > 0 && Number(g.height) > 0) {
+        this.scratchpadShownGeometry.set(w, {
+          rect: qt().rect(Number(g.x), Number(g.y), Number(g.width), Number(g.height)),
+          output: String(g.output ?? "")
+        });
+      }
+    };
     const wins = [];
     for (const id of state.order) {
       const w = byId.get(String(id));
-      if (w !== void 0 && isTrackableWindow(w)) {
+      if (w !== void 0 && canBeScratchpadWindow(w)) {
         wins.push(w);
       }
     }
@@ -4279,11 +4922,54 @@ var Controller = class {
       this.publishScratchpad();
       return;
     }
-    for (const w of wins) {
+    // Clones stay tiled on their desktop across the reload; they only need
+    // their scratchpad membership back. This runs before the parked windows
+    // below, so a state with only clones still restores them.
+    const cloneIds = Array.isArray(state.clones) ? state.clones.map(String) : [];
+    const cloneWins = [];
+    for (const id of cloneIds) {
+      const w = byId.get(String(id));
+      if (w !== void 0 && canBeScratchpadWindow(w)) {
+        cloneWins.push(w);
+      }
+    }
+    for (const w of cloneWins) {
+      // A reload can happen while the clone was floated above another
+      // desktop. Put it back on its home desktop first; if it is still the
+      // shown window, showScratchpadWindow() below floats it again.
+      if (w.onAllDesktops) {
+        const homeId = homes[String(w.internalId)];
+        const home = homeId !== void 0 ? deskById.get(String(homeId)) : void 0;
+        this.scratchpadBusy = true;
+        try {
+          w.onAllDesktops = false;
+          if (home !== void 0) {
+            w.desktops = [home];
+          }
+        } finally {
+          this.scratchpadBusy = false;
+        }
+      }
+      scratchpadWindows.add(w);
+      scratchpadClonedWindows.add(w);
+      if (!this.scratchpadSaved.has(w)) {
+        // A reload empties the controller's maps but the window still sits on
+        // its desktop; capture that, or showing it later could not put it
+        // back home.
+        this.rememberScratchpadWindow(w);
+      }
+      applyRemembered(w);
+      if (!this.scratchpadOrder.includes(w)) {
+        this.scratchpadOrder.push(w);
+      }
+    }
+    const parked = wins.filter((w) => !cloneWins.includes(w));
+    for (const w of parked) {
       if (scratchpadWindows.has(w)) {
         continue;
       }
       this.rememberScratchpadWindow(w);
+      applyRemembered(w);
       const displays = this.evUntileWindow(w);
       scratchpadWindows.add(w);
       if (!this.scratchpadOrder.includes(w)) {
@@ -4295,15 +4981,22 @@ var Controller = class {
     }
     this.scratchpadBusy = true;
     try {
-      for (const w of wins) {
+      for (const w of parked) {
         w.keepAbove = false;
         w.onAllDesktops = false;
         w.minimized = true;
+        // Turning off onAllDesktops drops it on the current desktop; put the
+        // remembered home back.
+        const saved = this.scratchpadSaved.get(w);
+        if (saved !== void 0 && saved.desktops.length > 0) {
+          w.desktops = saved.desktops;
+        }
       }
     } finally {
       this.scratchpadBusy = false;
     }
     this.scratchpadShown = null;
+    this.lastScratchpadShown = null;
     const shown = String(state.shown ?? "");
     if (shown !== "") {
       const w = wins.find((x) => String(x.internalId) === shown);
@@ -4390,6 +5083,11 @@ var Controller = class {
   // The overview effect lives in the effect engine and cannot touch this
   // script, so it round-trips its window commands through the saver.
   pollRequest() {
+    // A timer from a replaced controller instance still fires once after a
+    // reload; the live controller does the polling.
+    if (controller() !== this) {
+      return;
+    }
     // Reading the layout tabs costs a round of readConfig calls, so do it
     // every few polls instead of every 500 ms.
     this.pollCount = (this.pollCount ?? 0) + 1;
@@ -4401,7 +5099,20 @@ var Controller = class {
   }
   handleRequest(request) {
     if (request.t === "scratchToggle") {
-      this.toggleScratchpad();
+      this.cycleScratchpad();
+      return;
+    }
+    if (request.t === "scratchClone") {
+      let target = null;
+      if (request.id !== void 0) {
+        target = this.workspace.stackingOrder.find((w) => String(w.internalId) === String(request.id)) ?? null;
+      }
+      if (target === null) {
+        target = this.workspace.activeWindow;
+      }
+      if (target !== null && target !== void 0) {
+        this.cloneToScratchpad(target);
+      }
       return;
     }
     if (request.t === "scratchSend") {
@@ -4475,7 +5186,7 @@ var Controller = class {
       if (target === undefined) return;
       if (target.minimized) target.minimized = false;
       this.workspace.activeWindow = target;
-      this.qmlObjects.dbus?.moveMouseToFocus().call();
+      qmlItem(this.qmlObjects.dbus)?.moveMouseToFocus().call();
       return;
     }
     // A monocle desktop is switched back to tiled while the overview is open,
@@ -4765,8 +5476,10 @@ var Controller = class {
     const handler = new WindowHandler(window, this.workspace);
     this.windowHandlers.set(window, handler);
     // A scratchpad window recovered after a reload is already owned by the
-    // scratchpad; do not also add it to a desktop layout.
-    if (isScratchpadWindow(window)) {
+    // scratchpad; do not also add it to a desktop layout. Clones are the
+    // exception: they stay tiled on their desktop, and adoption is what puts
+    // them there when the recovered state arrives before the queued events.
+    if (isScratchpadWindow(window) && !isScratchpadCloned(window)) {
       return [];
     }
     const ret = [];
@@ -4803,8 +5516,10 @@ var Controller = class {
     console().log("destroying window");
     if (scratchpadWindows.has(window)) {
       scratchpadWindows.delete(window);
+      scratchpadClonedWindows.delete(window);
       this.scratchpadOrder = this.scratchpadOrder.filter((w) => w !== window);
       this.scratchpadSaved.delete(window);
+      this.scratchpadShownGeometry.delete(window);
       if (this.scratchpadShown === window) {
         this.scratchpadShown = null;
       }
@@ -4850,7 +5565,9 @@ var Controller = class {
     if (!this.windowExists(window)) {
       return this.evDeleteWindow(window, []);
     }
-    if (isScratchpadWindow(window)) {
+    // Parked and shown clones are invisible to the layout; an idle clone is
+    // updated like any window so desktop moves keep the drivers in sync.
+    if (isScratchpadOwned(window)) {
       return [];
     }
     console().log("updating window", window.resourceClass);
@@ -4914,7 +5631,7 @@ var Controller = class {
   }
   evTileWindow(window) {
     console().log("tiling window");
-    if (isScratchpadWindow(window)) {
+    if (isScratchpadOwned(window)) {
       return [];
     }
     const ret = [];
@@ -4935,8 +5652,9 @@ var Controller = class {
     console().log("untiling window");
     // Already out of every layout. sendToScratchpad calls this before adding
     // the window to the scratchpad set, so this guard only catches later
-    // minimize/drag signals.
-    if (isScratchpadWindow(window)) {
+    // minimize/drag signals. Idle clones can legitimately leave tiling (a
+    // drag with the untile policy); parked and shown clones cannot.
+    if (isScratchpadOwned(window)) {
       return [];
     }
     const ret = [];
@@ -4958,7 +5676,7 @@ var Controller = class {
     if (!this.windowExists(window)) {
       return this.evDeleteWindow(window, []);
     }
-    if (isScratchpadWindow(window)) {
+    if (isScratchpadOwned(window)) {
       return [];
     }
     console().log(
@@ -4998,7 +5716,7 @@ var Controller = class {
     return displays;
   }
   evDragWindow(window) {
-    if (isScratchpadWindow(window)) {
+    if (isScratchpadOwned(window)) {
       return [];
     }
     const ret = [];
@@ -5016,7 +5734,7 @@ var Controller = class {
     if (!this.windowExists(window)) {
       return this.evDeleteWindow(window, []);
     }
-    if (isScratchpadWindow(window)) {
+    if (isScratchpadOwned(window)) {
       return [];
     }
     console().log(
@@ -5076,7 +5794,7 @@ var Controller = class {
   }
   evWindowActivated(window) {
     console().log("window activated");
-    if (isScratchpadWindow(window)) {
+    if (isScratchpadOwned(window)) {
       return [];
     }
     const displays = [];
@@ -5315,7 +6033,7 @@ var Controller = class {
         // ask KWin to reconfigure before the popup reads the tabs. The next
         // poll rebuilds the displays once readConfig() has the new text.
         if (!config().useDBusSaver) {
-          this.qmlObjects.dbus?.reconfigureKWin().call();
+          qmlItem(this.qmlObjects.dbus)?.reconfigureKWin().call();
         }
         const driver = this.getDriver(ev.display);
         if (driver === void 0) {
@@ -5451,7 +6169,6 @@ var Controller = class {
     return this.windowDriver(window)?.getEngineType() === KWIN_ENGINE_TYPE;
   }
 };
-var controllerObj;
 var consoleObj;
 var configObj;
 var qtObject;
@@ -5474,6 +6191,15 @@ function initializeController(qmlApi, qmlObjects) {
   }
   controllerObj = new Controller(qmlApi, qmlObjects);
   console().log("controller initialized. Welcome to Folonium!");
+}
+// main.qml hands over its Loaders rather than their items: they are declared
+// below the block that starts the script, so .item can still be null there.
+function qmlItem(thing) {
+  if (thing === null || thing === void 0) {
+    return null;
+  }
+  // A QQuickItem has no "item" property; a Loader always does.
+  return "item" in thing ? thing.item : thing;
 }
 function controller() {
   return controllerObj;
