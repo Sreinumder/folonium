@@ -4153,6 +4153,9 @@ var Controller = class {
     // up puts it exactly where the user last left it instead of recentring.
     this.scratchpadShownGeometry = /* @__PURE__ */ new Map();
     this.scratchpadSaved = /* @__PURE__ */ new Map();
+    // The desktop a clone was last floated above, so the clone key can jump
+    // between that desktop and the desktop the clone tiles on.
+    this.scratchpadOpenedDesktop = /* @__PURE__ */ new Map();
     this.scratchpadBusy = false;
     this.windowHandlers = /* @__PURE__ */ new Map();
     this.previousDisplays = /* @__PURE__ */ new Map();
@@ -4321,13 +4324,25 @@ var Controller = class {
     if (window === null || window === void 0 || !canBeScratchpadWindow(window)) {
       return;
     }
+    if (scratchpadWindows.has(window) && scratchpadClonedWindows.has(window)) {
+      // Already a clone: the key toggles between the desktop it tiles on and
+      // the desktop the scratchpad last borrowed it to.
+      this.toggleCloneDesktop(window);
+      return;
+    }
     let previous = null;
+    // The desktop the window was up on when it was converted, so the clone
+    // key can bring it back there from its home desktop.
+    let convertedFrom = null;
     if (scratchpadWindows.has(window)) {
-      // A clone is made from a plain desktop window. Whatever flavor of
-      // scratchpad member this is — parked, cloned, shown — take it fully out
-      // first so it lands on a desktop, then share it from there.
+      // A clone is made from a plain desktop window. A parked or shown window
+      // is first put back on its home desktop in the background: converting it
+      // must not follow the window or change the desktop in view.
+      if (this.scratchpadShown === window) {
+        convertedFrom = this.workspace.currentDesktop;
+      }
       previous = this.scratchpadSaved.get(window) ?? null;
-      this.restoreFromScratchpad(window);
+      this.restoreFromScratchpad(window, null, false);
     }
     this.rememberScratchpadWindow(window);
     const saved = this.scratchpadSaved.get(window);
@@ -4340,11 +4355,18 @@ var Controller = class {
       if (previous.tiled === false) {
         saved.geometry = previous.geometry;
       }
+      if (typeof previous.outputName === "string" && previous.outputName !== "") {
+        saved.outputName = previous.outputName;
+      }
     }
     scratchpadWindows.add(window);
     scratchpadClonedWindows.add(window);
     if (!this.scratchpadOrder.includes(window)) {
       this.scratchpadOrder.push(window);
+    }
+    if (convertedFrom !== null && convertedFrom !== void 0) {
+      this.scratchpadOpenedDesktop.set(window, convertedFrom);
+      this.lastScratchpadShown = window;
     }
     console().log("cloned window into scratchpad", window.resourceClass);
     this.publishScratchpad();
@@ -4427,7 +4449,7 @@ var Controller = class {
   // Remove a window from the scratchpad and give it back to a desktop. With no
   // target it returns to the desktop it came from; the overview passes the
   // desktop a card was dropped on.
-  restoreFromScratchpad(window, desktop) {
+  restoreFromScratchpad(window, desktop, follow = true) {
     if (!scratchpadWindows.has(window)) {
       return;
     }
@@ -4449,6 +4471,7 @@ var Controller = class {
     // Clones and parked windows alike are fully out of the scratchpad now, so
     // their remembered state is spent.
     this.scratchpadSaved.delete(window);
+    this.scratchpadOpenedDesktop.delete(window);
 
     if (cloned && (desktop === null || desktop === void 0)) {
       // A clone is still tiled where it was; only the scratchpad side has to
@@ -4462,10 +4485,11 @@ var Controller = class {
         window.onAllDesktops = false;
         window.minimized = false;
         this.scratchpadReturnHome(window, saved);
-        if (wasOnAllDesktops) {
-          // It was on loan above another desktop; bring it forward where it
-          // lands now that it is back home. An idle clone stays where it is.
-          this.workspace.activeWindow = window;
+        if (follow && wasOnAllDesktops) {
+          // Unsending the clone that was on loan also takes the user to the
+          // desktop where it now tiles, with the window focused. Removing an
+          // idle clone must not move the desktop in view.
+          this.revealScratchpadWindow(window, homeDesktop ?? (window.desktops.length === 1 ? window.desktops[0] : null));
         }
       } finally {
         this.scratchpadBusy = false;
@@ -4538,6 +4562,13 @@ var Controller = class {
     } finally {
       this.scratchpadBusy = false;
     }
+    if (follow) {
+      // The send/unsend key gives the window back to its own desktop; go there
+      // and focus it so unsending does not leave the user looking at an empty
+      // desktop. Drops pass an explicit target and the overview has already
+      // switched, so this only repeats that same switch.
+      this.revealScratchpadWindow(window, target);
+    }
 
     console().debug("scratchpad: restoring", window.resourceClass, "tiled", tiled);
     // A parked window keeps the KWin tile pointer it had when it left the
@@ -4573,12 +4604,72 @@ var Controller = class {
     console().log("restored window from scratchpad", window.resourceClass);
     this.publishScratchpad();
   }
+  // A clone that is tiled on the desktop in view reads as an ordinary window
+  // there, so the scratchpad keys should not stop on it.
+  scratchpadIdleCloneAt(window, desktop) {
+    if (!scratchpadClonedWindows.has(window) || window.onAllDesktops || window.minimized) {
+      return false;
+    }
+    const desktops = window.desktops;
+    return desktops.length === 1 && desktop !== null && desktop !== void 0 &&
+      String(desktops[0].id) === String(desktop.id);
+  }
+  // The order the toggle and cycle keys walk: every scratchpad window that is
+  // not already sitting tiled on the current desktop as a clone.
+  scratchpadCycleOrder() {
+    const desktop = this.workspace.currentDesktop;
+    return this.scratchpadOrder.filter((w) =>
+      this.windowExists(w) && !this.scratchpadIdleCloneAt(w, desktop)
+    );
+  }
+  // Switch to a desktop and put the restored window in front of the user.
+  revealScratchpadWindow(window, desktop) {
+    if (desktop !== null && desktop !== void 0) {
+      const current = this.workspace.currentDesktop;
+      if (current === null || current === void 0 || String(current.id) !== String(desktop.id)) {
+        this.workspace.currentDesktop = desktop;
+      }
+    }
+    Qt.callLater(() => {
+      if (this.windowExists(window)) {
+        this.workspace.activeWindow = window;
+      }
+    });
+  }
+  // The clone key on a window that is already a clone: jump between the
+  // desktop it tiles on and the desktop the scratchpad last borrowed it to.
+  toggleCloneDesktop(window) {
+    const home = this.scratchpadHomeDesktop(window);
+    const opened = this.scratchpadOpenedDesktop.get(window) ?? home;
+    const current = this.workspace.currentDesktop;
+    if (home === null || opened === null || opened === void 0 || current === null || current === void 0) {
+      return;
+    }
+    if (String(current.id) === String(home.id)) {
+      // Land on the desktop that borrowed it first; showScratchpadWindow()
+      // reads the current desktop, so it must already be the borrowed one.
+      if (String(opened.id) !== String(home.id)) {
+        this.workspace.currentDesktop = opened;
+        Qt.callLater(() => {
+          if (this.windowExists(window)) {
+            this.showScratchpadWindow(window);
+          }
+        });
+        return;
+      }
+      this.showScratchpadWindow(window);
+      return;
+    }
+    // It is borrowed here: put the overlay away and follow it home.
+    this.hideScratchpadWindow(window);
+    this.revealScratchpadWindow(window, home);
+  }
   // The toggle key: show the scratchpad window the user last had up, or put
   // the shown one away. It never steps to another window — that is the cycle
   // key — so pressing it again brings the same window back.
   toggleScratchpad() {
-    const order = this.scratchpadOrder.filter((w) => this.windowExists(w));
-    this.scratchpadOrder = order;
+    this.scratchpadOrder = this.scratchpadOrder.filter((w) => this.windowExists(w));
+    const order = this.scratchpadCycleOrder();
     if (this.scratchpadShown !== null) {
       if (this.windowExists(this.scratchpadShown)) {
         this.lastScratchpadShown = this.scratchpadShown;
@@ -4604,8 +4695,8 @@ var Controller = class {
   // a window out of the scratchpad is what the send/unsend key and the
   // overview are for, so cycling never empties the stack on its own.
   cycleScratchpad() {
-    const order = this.scratchpadOrder.filter((w) => this.windowExists(w));
-    this.scratchpadOrder = order;
+    this.scratchpadOrder = this.scratchpadOrder.filter((w) => this.windowExists(w));
+    const order = this.scratchpadCycleOrder();
     if (order.length === 0) {
       console().log("scratchpad is empty");
       return;
@@ -4661,13 +4752,20 @@ var Controller = class {
       return;
     }
     const current = this.workspace.currentDesktop;
+    if (current !== null && current !== void 0) {
+      // Remember where the user brought this window up; the clone key uses it
+      // to jump back and forth.
+      this.scratchpadOpenedDesktop.set(window, current);
+    }
     const cloned = scratchpadClonedWindows.has(window);
     // A clone that tiles on the desktop in view already is here: activating it
     // is the sane thing to do instead of floating a copy of itself.
     if (cloned && current !== null && current !== void 0) {
       const desktops = window.desktops;
       if (desktops.length === 1 && String(desktops[0].id) === String(current.id) && !window.minimized) {
-        this.scratchpadShown = window;
+        // It already tiles here, so "show" only means activate. It must not
+        // become the floating scratchpad window: layout paths exclude the
+        // shown clone, and a plain tiled window would drop out of its layout.
         this.lastScratchpadShown = window;
         this.workspace.activeWindow = window;
         this.publishScratchpad();
@@ -5520,6 +5618,7 @@ var Controller = class {
       this.scratchpadOrder = this.scratchpadOrder.filter((w) => w !== window);
       this.scratchpadSaved.delete(window);
       this.scratchpadShownGeometry.delete(window);
+      this.scratchpadOpenedDesktop.delete(window);
       if (this.scratchpadShown === window) {
         this.scratchpadShown = null;
       }

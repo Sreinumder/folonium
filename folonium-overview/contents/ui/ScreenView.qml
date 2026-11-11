@@ -1638,9 +1638,13 @@ FocusScope {
     component ScratchpadCard: Item {
         id: sc
 
-        required property QtObject window
+        // The strip's model is a plain JS array, so the window arrives as
+        // modelData. Declaring it required lets the delegate model fill it in;
+        // binding it from the use site does not work for an inline component.
+        required property var modelData
+        readonly property QtObject window: modelData
 
-        readonly property string id: String(window.internalId)
+        readonly property string id: modelData ? String(modelData.internalId) : ""
         readonly property bool shownNow: root.scratchShownId === sc.id
         readonly property bool cloned: root.scratchCloneIds.indexOf(sc.id) !== -1
         readonly property bool scratch: true
@@ -2743,9 +2747,7 @@ FocusScope {
 
                 Repeater {
                     model: root.scratchWindows
-                    delegate: ScratchpadCard {
-                        window: modelData
-                    }
+                    delegate: ScratchpadCard {}
                 }
             }
         }
@@ -2895,10 +2897,49 @@ FocusScope {
 
         Loader {
             anchors.fill: parent
-            active: root.dragTile !== null
+            active: root.dragTile !== null && !root.dragScratch
             sourceComponent: SharpThumbnail {
                 window: root.dragWindow
                 radius: root.tileRadius
+            }
+        }
+
+        // A scratchpad card has no live preview; its ghost keeps the icon and
+        // title so dragging one does not turn into a blank rectangle.
+        Kirigami.Icon {
+            visible: root.dragScratch && root.dragWindow !== null
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: Math.round((parent.height - 24) / 2 - height / 2)
+            width: Math.round(Math.min(parent.width * 0.5, (parent.height - 24) * 0.72))
+            height: width
+            source: root.dragWindow !== null ? root.dragWindow.icon : ""
+            opacity: 0.9
+        }
+        Row {
+            visible: root.dragScratch && root.dragWindow !== null
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: 5
+            anchors.rightMargin: 5
+            height: 24
+            spacing: 4
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(1, parent.width - 22)
+                text: root.dragWindow !== null ? root.dragWindow.caption : ""
+                color: root.panelText
+                font.pixelSize: 10
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+            Kirigami.Icon {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 12
+                height: 12
+                source: "edit-copy"
+                visible: root.dragWindow !== null && root.isScratchClone(root.dragWindow)
+                opacity: 0.7
             }
         }
 
