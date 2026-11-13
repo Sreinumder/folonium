@@ -4149,6 +4149,10 @@ var Controller = class {
     // Remembered even while nothing is shown, so the toggle key brings back the
     // window the user last had up instead of starting over at the first one.
     this.lastScratchpadShown = null;
+    // The window that had focus before the overlay came up. A parked window
+    // hands focus back by minimizing, but a clone keeps running on its own
+    // desktop, so KWin leaves it active even after it is out of view.
+    this.scratchpadReturnFocus = null;
     // Per-window size and position for the overlay, so toggling a window back
     // up puts it exactly where the user last left it instead of recentring.
     this.scratchpadShownGeometry = /* @__PURE__ */ new Map();
@@ -4468,6 +4472,9 @@ var Controller = class {
     if (this.lastScratchpadShown === window) {
       this.lastScratchpadShown = null;
     }
+    // Taking the window out of the stack owns the focus decision from here
+    // (the caller reveals or drops it), so drop any pending return target.
+    this.scratchpadReturnFocus = null;
     // Clones and parked windows alike are fully out of the scratchpad now, so
     // their remembered state is spent.
     this.scratchpadSaved.delete(window);
@@ -4744,6 +4751,16 @@ var Controller = class {
     if (!scratchpadWindows.has(window) || !this.windowExists(window)) {
       return;
     }
+    // Remember the window to hand focus back to when the overlay goes away.
+    // Showing another scratchpad window directly keeps the same target: the
+    // overlay that was up is no place to return to.
+    if (this.scratchpadShown === null || this.scratchpadReturnFocus === null ||
+      !this.windowExists(this.scratchpadReturnFocus)) {
+      const active = this.workspace.activeWindow;
+      if (active !== null && active !== void 0 && active !== window && !isScratchpadWindow(active)) {
+        this.scratchpadReturnFocus = active;
+      }
+    }
     if (this.scratchpadShown !== null && this.scratchpadShown !== window) {
       this.hideScratchpadWindow(this.scratchpadShown);
     }
@@ -4858,7 +4875,56 @@ var Controller = class {
     if (this.scratchpadShown === window) {
       this.scratchpadShown = null;
     }
+    // A clone that goes home keeps running off screen, and KWin does not move
+    // focus off it by itself. Put focus back on the window the user was using
+    // before the overlay came up.
+    if (cloned) {
+      this.scratchpadRestoreFocus(window);
+    }
     this.publishScratchpad();
+  }
+  // The topmost ordinary window on the desktop in view, used when the window
+  // that had focus before the overlay no longer exists.
+  scratchpadTopWindowOnCurrentDesktop(exclude) {
+    const desktop = this.workspace.currentDesktop;
+    const wins = this.workspace.stackingOrder;
+    for (let i = wins.length - 1; i >= 0; i--) {
+      const w = wins[i];
+      if (w === exclude || w.minimized) continue;
+      if (!w.normalWindow || w.specialWindow || w.skipTaskbar || w.onScreenDisplay) continue;
+      if (w.notification || w.criticalNotification || isScratchpadOwned(w)) continue;
+      if (desktop !== null && desktop !== void 0 && !w.onAllDesktops &&
+        !w.desktops.some((d) => String(d.id) === String(desktop.id))) continue;
+      return w;
+    }
+    return null;
+  }
+  // A parked window hands focus back when it minimizes. A clone does not: it
+  // keeps running on its own desktop, so the old window stays active even
+  // though it is out of view. Runs a moment later so KWin has finished moving
+  // the clone home before focus is reassigned.
+  scratchpadRestoreFocus(window) {
+    Qt.callLater(() => {
+      // A cycle or the clone key may have put another overlay (or the clone
+      // itself, on its home desktop) in front; it owns focus now.
+      if (this.scratchpadShown !== null) return;
+      const desktop = this.workspace.currentDesktop;
+      const onCurrent = (w) => w.onAllDesktops || desktop === null || desktop === void 0 ||
+        w.desktops.some((d) => String(d.id) === String(desktop.id));
+      const active = this.workspace.activeWindow;
+      // Focus already sits on something visible here: the desktop switched,
+      // KWin picked a window, or the user clicked one. Leave it alone.
+      if (active !== null && active !== void 0 && onCurrent(active)) return;
+      let target = this.scratchpadReturnFocus;
+      this.scratchpadReturnFocus = null;
+      if (target === null || target === void 0 || target === window ||
+        !this.windowExists(target) || target.minimized || !onCurrent(target)) {
+        target = this.scratchpadTopWindowOnCurrentDesktop(window);
+      }
+      if (target !== null && target !== void 0) {
+        this.workspace.activeWindow = target;
+      }
+    });
   }
   // Going back to the desktop a clone came from puts the overlay away, but the
   // clone stays in the scratchpad stack: it is simply tiled on its own desktop
@@ -5621,6 +5687,15 @@ var Controller = class {
       this.scratchpadOpenedDesktop.delete(window);
       if (this.scratchpadShown === window) {
         this.scratchpadShown = null;
+        // The overlay is gone with the window; there is nothing left to hand
+        // focus back from.
+        this.scratchpadReturnFocus = null;
+      }
+      if (this.scratchpadReturnFocus === window) {
+        this.scratchpadReturnFocus = null;
+      }
+      if (this.lastScratchpadShown === window) {
+        this.lastScratchpadShown = null;
       }
       this.publishScratchpad();
     }
