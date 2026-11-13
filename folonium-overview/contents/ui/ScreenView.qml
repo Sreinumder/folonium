@@ -65,7 +65,7 @@ FocusScope {
     property var scratchWindows: []
     // Scratchpad windows that also stay tiled on their own desktop.
     property var scratchCloneIds: []
-    readonly property int scratchBand: root.scratchWindows.length > 0 ? 92 : 0
+    readonly property int scratchBand: root.scratchWindows.length > 0 ? 54 : 0
     // Room taken by the "Scratchpad" label at the left of the strip.
     readonly property int scratchLabelW: 82
     property var desktopStates: ({})
@@ -293,6 +293,35 @@ FocusScope {
             root.scratchIds = [];
             root.scratchShownId = "";
             root.scratchCloneIds = [];
+        }
+        root.rebuildScratch();
+        root.rebuildGroups();
+    }
+    // Menu actions ask the script and also fix the strip here, so a send or
+    // remove shows up at once while the overview stays open.
+    function parkLocal(window, clone) {
+        if (window === null || window === undefined) {
+            return;
+        }
+        const id = String(window.internalId);
+        if (root.scratchIds.indexOf(id) === -1) {
+            root.scratchIds = root.scratchIds.concat([id]);
+        }
+        if (clone && root.scratchCloneIds.indexOf(id) === -1) {
+            root.scratchCloneIds = root.scratchCloneIds.concat([id]);
+        }
+        root.rebuildScratch();
+        root.rebuildGroups();
+    }
+    function unparkLocal(window) {
+        if (window === null || window === undefined) {
+            return;
+        }
+        const id = String(window.internalId);
+        root.scratchIds = root.scratchIds.filter(x => x !== id);
+        root.scratchCloneIds = root.scratchCloneIds.filter(x => x !== id);
+        if (root.scratchShownId === id) {
+            root.scratchShownId = "";
         }
         root.rebuildScratch();
         root.rebuildGroups();
@@ -1650,7 +1679,7 @@ FocusScope {
         readonly property bool scratch: true
         // beginDrag/finishDrag read these from a tile.
         readonly property var tile: ({ desktop: root.currentDesktop, scale: 1, monoLayout: false })
-        readonly property real cardWidth: Math.min(170, Math.max(48,
+        readonly property real cardWidth: Math.min(300, Math.max(120,
             (root.screenW - 2 * root.outerPad - root.scratchLabelW - root.groupGap -
              (root.scratchWindows.length - 1) * root.groupGap) /
             Math.max(1, root.scratchWindows.length)))
@@ -1660,10 +1689,10 @@ FocusScope {
         property point pressPointer: Qt.point(0, 0)
         property point pressGrab: Qt.point(0, 0)
 
-        readonly property int scTitleBand: 24
-
         width: cardWidth
-        height: Math.min(76, Math.max(48, Math.round(width * root.screenH / Math.max(1, root.screenW))))
+        // One line: icon, title, and clone badge share the width, so the strip
+        // costs a fraction of the height a preview card did.
+        height: 30
 
         Rectangle {
             anchors.fill: parent
@@ -1673,42 +1702,30 @@ FocusScope {
         }
 
         // No preview here: a parked window is minimized, so a live thumbnail
-        // would show a stale frame. An icon and the title say enough.
-        Kirigami.Icon {
-            id: scIcon
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: Math.round((sc.height - scTitleBand) / 2 - height / 2)
-            width: Math.round(Math.min(sc.width * 0.5, (sc.height - scTitleBand) * 0.72))
-            height: width
-            source: sc.window.icon
-            opacity: sc.shownNow ? 1 : 0.85
-        }
-
-        Rectangle {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            height: sc.scTitleBand
-            color: root.alpha(root.panelColor, 0.55)
-        }
-
+        // would show a stale frame. Icon and title on one line say enough.
         Row {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.leftMargin: 5
-            anchors.rightMargin: 5
-            height: scTitleBand
-            spacing: 4
+            anchors.fill: parent
+            anchors.leftMargin: 7
+            anchors.rightMargin: 7
+            spacing: 6
+
+            Kirigami.Icon {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 16
+                height: 16
+                source: sc.window.icon
+                opacity: sc.shownNow ? 1 : 0.85
+            }
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                width: Math.max(1, parent.width - (scCloneBadge.visible ? scCloneBadge.width + 4 : 0))
+                width: Math.max(1, parent.width - 16 - 6 - (scCloneBadge.visible ? scCloneBadge.width + 6 : 0))
                 text: sc.window.caption
                 color: root.panelText
-                font.pixelSize: 10
+                font.pixelSize: 11
                 font.weight: sc.shownNow ? Font.Bold : Font.DemiBold
                 elide: Text.ElideRight
+                verticalAlignment: Text.AlignVCenter
             }
             Kirigami.Icon {
                 id: scCloneBadge
@@ -1726,7 +1743,7 @@ FocusScope {
             id: scratchArea
             anchors.fill: parent
             hoverEnabled: true
-            acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+            acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
             propagateComposedEvents: false
             onPressed: (mouse) => {
                 sc.dragButton = mouse.button;
@@ -1777,8 +1794,8 @@ FocusScope {
                     requestCall.call();
                     effect.deactivate();
                 } else if (mouse.button === Qt.MiddleButton) {
-                    // Put it back on the current desktop (for a clone that
-                    // means moving it here, not just unsharing it).
+                    // Remove it from the scratchpad and give it back to its
+                    // own desktop; the controller follows it there.
                     root.scratchIds = root.scratchIds.filter(id => id !== sc.id);
                     root.scratchCloneIds = root.scratchCloneIds.filter(id => id !== sc.id);
                     if (root.scratchShownId === sc.id) {
@@ -1786,13 +1803,10 @@ FocusScope {
                     }
                     root.rebuildScratch();
                     root.rebuildGroups();
-                    requestCall.arguments = [JSON.stringify({
-                        t: "scratchToDesktop",
-                        id: sc.id,
-                        desktop: String(root.currentDesktop.id),
-                        number: root.currentDesktop.x11DesktopNumber
-                    })];
+                    requestCall.arguments = [JSON.stringify({ t: "scratchRemove", id: sc.id })];
                     requestCall.call();
+                } else if (mouse.button === Qt.RightButton) {
+                    root.openMenu(sc.window, sc.pressPointer);
                 }
             }
         }
@@ -2704,8 +2718,9 @@ FocusScope {
         }
 
         // Scratchpad strip along the bottom edge. These windows are not on any
-        // desktop: left click shows one, middle click puts it back, drag moves
-        // it out to a desktop. The packer reserves scratchBand above it.
+        // desktop: left click shows one, middle click puts it back, right
+        // click opens the window menu, drag moves it out to a desktop. The
+        // packer reserves scratchBand above it.
         Item {
             id: scratchStrip
             visible: root.scratchWindows.length > 0
@@ -2819,14 +2834,18 @@ FocusScope {
             }
             MenuItem {
                 // A parked window is already in the scratchpad, so the useful
-                // action there is the way back out. Scratch cards have no
-                // right-click menu of their own.
+                // action there is the way back out. Both directions keep the
+                // overview up: the strip just gains or loses a card.
                 text: root.isScratch(root.menuWindow) ? "Remove from scratchpad" : "Send to scratchpad"
                 onClicked: {
                     const w = root.menuWindow;
                     root.closeMenu();
-                    effect.deactivate();
                     const parked = root.isScratch(w);
+                    if (parked) {
+                        root.unparkLocal(w);
+                    } else {
+                        root.parkLocal(w, false);
+                    }
                     requestCall.arguments = [JSON.stringify(parked ? { t: "scratchRemove", id: String(w.internalId) } : { t: "scratchSend", id: String(w.internalId) })];
                     requestCall.call();
                 }
@@ -2839,7 +2858,38 @@ FocusScope {
                 onClicked: {
                     const w = root.menuWindow;
                     root.closeMenu();
+                    root.parkLocal(w, true);
                     requestCall.arguments = [JSON.stringify({ t: "scratchClone", id: String(w.internalId) })];
+                    requestCall.call();
+                }
+            }
+            // Scratch cards get the same menu as window tiles, with the card
+            // actions spelled out instead of hidden on mouse buttons.
+            MenuItem {
+                visible: root.menuWindow !== null && root.isScratch(root.menuWindow) &&
+                    root.scratchShownId !== String(root.menuWindow.internalId)
+                text: "Show on this desktop"
+                onClicked: {
+                    const w = root.menuWindow;
+                    root.closeMenu();
+                    effect.deactivate();
+                    requestCall.arguments = [JSON.stringify({ t: "scratchShow", id: String(w.internalId) })];
+                    requestCall.call();
+                }
+            }
+            MenuItem {
+                visible: root.menuWindow !== null && root.isScratch(root.menuWindow)
+                text: "Move to this desktop"
+                onClicked: {
+                    const w = root.menuWindow;
+                    root.closeMenu();
+                    effect.deactivate();
+                    requestCall.arguments = [JSON.stringify({
+                        t: "scratchToDesktop",
+                        id: String(w.internalId),
+                        desktop: String(root.currentDesktop.id),
+                        number: root.currentDesktop.x11DesktopNumber
+                    })];
                     requestCall.call();
                 }
             }
@@ -2855,8 +2905,11 @@ FocusScope {
             MenuItem { separator: true }
             // A window on several desktops appears here as copies. Pinning it
             // back to this one replaces the all-desktops toggle then.
+            // A scratchpad window is parked or on loan, so pinning it to
+            // desktops here would fight the scratchpad's own desktop handling.
             MenuItem {
-                visible: root.menuWindow !== null && (root.menuWindow.onAllDesktops || root.menuWindow.desktops.length > 1)
+                visible: root.menuWindow !== null && !root.isScratch(root.menuWindow) &&
+                    (root.menuWindow.onAllDesktops || root.menuWindow.desktops.length > 1)
                 text: "Show only in current desktop"
                 onClicked: {
                     const w = root.menuWindow;
@@ -2866,7 +2919,8 @@ FocusScope {
                 }
             }
             MenuItem {
-                visible: root.menuWindow !== null && !root.menuWindow.onAllDesktops && root.menuWindow.desktops.length <= 1
+                visible: root.menuWindow !== null && !root.isScratch(root.menuWindow) &&
+                    !root.menuWindow.onAllDesktops && root.menuWindow.desktops.length <= 1
                 text: "Show on all desktops"
                 onClicked: {
                     root.menuWindow.onAllDesktops = true;
@@ -2905,35 +2959,33 @@ FocusScope {
         }
 
         // A scratchpad card has no live preview; its ghost keeps the icon and
-        // title so dragging one does not turn into a blank rectangle.
-        Kirigami.Icon {
-            visible: root.dragScratch && root.dragWindow !== null
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: Math.round((parent.height - 24) / 2 - height / 2)
-            width: Math.round(Math.min(parent.width * 0.5, (parent.height - 24) * 0.72))
-            height: width
-            source: root.dragWindow !== null ? root.dragWindow.icon : ""
-            opacity: 0.9
-        }
+        // title, laid out like the compact card so dragging one does not turn
+        // into a blank rectangle.
         Row {
             visible: root.dragScratch && root.dragWindow !== null
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.leftMargin: 5
-            anchors.rightMargin: 5
-            height: 24
-            spacing: 4
+            anchors.fill: parent
+            anchors.leftMargin: 7
+            anchors.rightMargin: 7
+            spacing: 6
+            Kirigami.Icon {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 16
+                height: 16
+                source: root.dragWindow !== null ? root.dragWindow.icon : ""
+                opacity: 0.9
+            }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                width: Math.max(1, parent.width - 22)
+                width: Math.max(1, parent.width - 16 - 6 - (dragCloneBadge.visible ? dragCloneBadge.width + 6 : 0))
                 text: root.dragWindow !== null ? root.dragWindow.caption : ""
                 color: root.panelText
-                font.pixelSize: 10
+                font.pixelSize: 11
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
+                verticalAlignment: Text.AlignVCenter
             }
             Kirigami.Icon {
+                id: dragCloneBadge
                 anchors.verticalCenter: parent.verticalCenter
                 width: 12
                 height: 12
