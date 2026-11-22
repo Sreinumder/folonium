@@ -1817,6 +1817,11 @@ function escapeRegex(str) {
 var WindowHandler = class {
   constructor(window, workspace) {
     this.wasTiledBeforeMove = false;
+    // A resize of a tile boundary is handled by KWin itself. It emits the
+    // same interactive move/resize signals as a drag, but must not be treated
+    // as a drag: re-placing at the cursor would swap the resized window with
+    // its neighbour when the cursor ends up on the other side of the divider.
+    this.resizing = false;
     this.tiledRect = null;
     this.dragSizeApplied = false;
     this.window = window;
@@ -1952,6 +1957,9 @@ var WindowHandler = class {
   // layout does not retile for n-1 windows; the drop either swaps it or floats it
   interactiveMoveResizeStarted() {
     this.wasTiledBeforeMove = controller().isWindowTiled(this.window) ?? false;
+    // KWin exposes the gesture as move or resize at this point; the resize
+    // flag is gone again by the time the finished signal is delivered.
+    this.resizing = this.window.resize === true;
     // The tile is still attached when the move starts; remember its size for
     // the "keep the tiled size" and custom drag-size modes.
     const geometry = this.window.tile?.absoluteGeometry ?? this.window.frameGeometry;
@@ -1960,6 +1968,13 @@ var WindowHandler = class {
   }
   interactiveMoveResizeStepped() {
     if (controller().isWindowOnKwinEngine(this.window)) {
+      return;
+    }
+    // Dragging the divider between two tiles resizes their KWin tiles; leaving
+    // the window in its slot and letting KWin apply the new relativeGeometry
+    // is the whole operation. Drag handling here would fight that and the
+    // drop would re-insert the window under the cursor.
+    if (this.resizing) {
       return;
     }
     if (!controller().isWindowTiled(this.window) || !this.canBeTiled() || this.window.tile != null) {
@@ -2017,7 +2032,15 @@ var WindowHandler = class {
     );
   }
   interactiveMoveResizeFinished() {
+    const resizing = this.resizing;
+    this.resizing = false;
     if (!this.canBeTiled()) {
+      return;
+    }
+    // KWin applied the divider position to the tile tree already. Do not run
+    // the drag drop path for a resize, or the window lands in whichever tile
+    // the cursor happens to be over.
+    if (resizing) {
       return;
     }
     if (!controller().isWindowOnKwinEngine(this.window) && this.wasTiledBeforeMove && this.wantsTiled && !controller().isWindowInMonocle(this.window)) {
